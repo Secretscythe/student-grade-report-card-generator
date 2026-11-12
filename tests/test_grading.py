@@ -11,6 +11,8 @@ from grading import (
     calculate_report_card,
     export_report_card_csv,
     export_report_card_html,
+    get_grade_tier_colors,
+    get_honor_standing,
     get_letter_grade_and_gpa,
     validate_subjects,
 )
@@ -110,6 +112,19 @@ class TestGradingCalculations(unittest.TestCase):
         self.assertIn("PASS", csv_text)
         self.assertIn("Sam Rivera", html_text)
         self.assertIn("FINAL STATUS: PASS", html_text)
+
+    def test_grade_tier_colors_and_honor_standing(self) -> None:
+        self.assertEqual(get_grade_tier_colors("A+")[1], "#047857")
+        self.assertEqual(get_grade_tier_colors("B")[1], "#1d4ed8")
+        self.assertEqual(get_grade_tier_colors("C-")[1], "#b45309")
+        self.assertEqual(get_grade_tier_colors("D")[1], "#c2410c")
+        self.assertEqual(get_grade_tier_colors("F")[1], "#b91c1c")
+
+        self.assertEqual(get_honor_standing(3.9, True), "Highest Honors")
+        self.assertEqual(get_honor_standing(3.6, True), "Dean's Honor List")
+        self.assertEqual(get_honor_standing(3.2, True), "Honor Roll")
+        self.assertEqual(get_honor_standing(2.5, True), "Good Standing")
+        self.assertEqual(get_honor_standing(3.5, False), "Academic Review Required")
 
     def test_app_smoke_execution_with_mocked_streamlit(self) -> None:
         """Verify app.py imports and executes main() cleanly."""

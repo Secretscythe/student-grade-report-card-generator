@@ -77,3 +77,4 @@ Streamlit Community Cloud connects directly to your GitHub repository and hosts 
 ```bash
 python3 -m unittest discover -s tests -v
 ```
+
