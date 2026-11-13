@@ -4,6 +4,17 @@ from __future__ import annotations
 
 import unittest
 
+from auth import (
+    ROLE_ADMIN,
+    ROLE_STUDENT,
+    ROLE_TEACHER,
+    authenticate_user,
+    delete_user_account,
+    get_default_users,
+    hash_password,
+    register_user,
+    verify_password,
+)
 from grading import (
     SCALE_PLUS_MINUS,
     SCALE_STANDARD,
@@ -126,8 +137,68 @@ class TestGradingCalculations(unittest.TestCase):
         self.assertEqual(get_honor_standing(2.5, True), "Good Standing")
         self.assertEqual(get_honor_standing(3.5, False), "Academic Review Required")
 
+    def test_authentication_and_registration(self) -> None:
+        users = get_default_users()
+        # 1. Student login
+        alex = authenticate_user(users, "alex", "student123")
+        self.assertIsNotNone(alex)
+        assert alex is not None
+        self.assertEqual(alex.full_name, "Alex Johnson")
+        self.assertEqual(alex.role, ROLE_STUDENT)
+
+        # 2. Teacher login
+        teacher = authenticate_user(users, "teacher", "teacher123")
+        self.assertIsNotNone(teacher)
+        assert teacher is not None
+        self.assertEqual(teacher.role, ROLE_TEACHER)
+
+        # 3. Administrator login
+        admin = authenticate_user(users, "admin", "admin123")
+        self.assertIsNotNone(admin)
+        assert admin is not None
+        self.assertEqual(admin.role, ROLE_ADMIN)
+
+        # Invalid password fails
+        self.assertIsNone(authenticate_user(users, "alex", "wrongpass"))
+        self.assertIsNone(authenticate_user(users, "unknown", "student123"))
+
+        # Register a new account
+        new_user, err = register_user(
+            users,
+            username="jordan",
+            password="securepassword",
+            full_name="Jordan Taylor",
+            role=ROLE_STUDENT,
+            student_id="STU-2026-400",
+            grade_level="Grade 10",
+        )
+        self.assertIsNone(err)
+        self.assertIsNotNone(new_user)
+        self.assertIsNotNone(authenticate_user(users, "jordan", "securepassword"))
+
+        # Admin account deletion protection
+        ok_self, _ = delete_user_account(users, "admin", "admin")
+        self.assertFalse(ok_self)
+        ok_del, _ = delete_user_account(users, "jordan", "admin")
+        self.assertTrue(ok_del)
+
+        # Duplicate username fails
+        dup_user, dup_err = register_user(
+            users,
+            username="alex",
+            password="securepassword",
+            full_name="Alex Dup",
+        )
+        self.assertIsNone(dup_user)
+        self.assertIsNotNone(dup_err)
+
+        # Password hashing round-trip
+        salt, pwd_hash = hash_password("my_secret_123")
+        self.assertTrue(verify_password("my_secret_123", salt, pwd_hash))
+        self.assertFalse(verify_password("wrong_secret", salt, pwd_hash))
+
     def test_app_smoke_execution_with_mocked_streamlit(self) -> None:
-        """Verify app.py imports and executes main() cleanly."""
+        """Verify app.py imports and executes both login portal and authenticated views cleanly."""
         import importlib
         import sys
         import types
@@ -175,7 +246,7 @@ class TestGradingCalculations(unittest.TestCase):
         fake_st.file_uploader = lambda *a, **kw: None  # type: ignore[attr-defined]
         fake_st.download_button = lambda *a, **kw: False  # type: ignore[attr-defined]
         fake_st.button = (  # type: ignore[attr-defined]
-            lambda label, **kw: "Generate Report Card" in str(label)
+            lambda label, **kw: "Admin Login" in str(label) or "Generate Report Card" in str(label)
         )
 
         had_st = "streamlit" in sys.modules
@@ -183,6 +254,10 @@ class TestGradingCalculations(unittest.TestCase):
         sys.modules["streamlit"] = fake_st
         try:
             app_mod = importlib.import_module("app")
+            # First run renders login portal and clicks Demo Student button
+            app_mod.main()
+            self.assertIsNotNone(fake_st.session_state["current_user"])
+            # Second run renders the full authenticated report card view
             app_mod.main()
             self.assertTrue(fake_st.session_state["show_report"])
             rows = app_mod._parse_uploaded_csv("Subject,Marks,Max Marks\nBiology,91,100\n")
