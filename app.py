@@ -12,6 +12,8 @@ from typing import Any
 import streamlit as st
 
 from auth import (
+    DEFAULT_SCHOOL,
+    DEMO_STUDENT_USERNAMES,
     ROLE_ADMIN,
     ROLE_STUDENT,
     ROLE_TEACHER,
@@ -19,6 +21,7 @@ from auth import (
     UserAccount,
     authenticate_user,
     delete_user_account,
+    generate_random_demo_assignments,
     get_default_student_roster,
     get_default_users,
     register_user,
@@ -708,6 +711,8 @@ def _init_state() -> None:
         st.session_state.show_report = True
     if "active_page" not in st.session_state:
         st.session_state.active_page = "marks"
+    if "drop_lowest_grade" not in st.session_state:
+        st.session_state.drop_lowest_grade = False
 
 
 def _load_student_from_roster(student_id: str) -> None:
@@ -718,6 +723,7 @@ def _load_student_from_roster(student_id: str) -> None:
         rows = [dict(r) for r in record["subjects"]]  # type: ignore[index]
         st.session_state.subjects = rows
         st.session_state.next_id = max((int(r["id"]) for r in rows), default=0) + 1
+    st.session_state.drop_lowest_grade = False
     st.session_state.show_report = True
 
 
@@ -725,9 +731,14 @@ def _login_as(account: UserAccount) -> None:
     """Set the active authenticated user session and load matching student record."""
     st.session_state.current_user = account
     if account.role == ROLE_STUDENT and account.student_id in st.session_state.roster:
+        if account.username in DEMO_STUDENT_USERNAMES:
+            st.session_state.roster[account.student_id]["subjects"] = (
+                generate_random_demo_assignments(5)
+            )
         _load_student_from_roster(account.student_id)
     else:
         _load_student_from_roster(st.session_state.active_student_id)
+    st.session_state.drop_lowest_grade = False
     st.session_state.active_page = "marks"
     st.session_state.show_report = True
 
@@ -876,7 +887,8 @@ def _render_user_profile_html(user: UserAccount) -> str:
         f"<span class='{role_cls}'>{html.escape(user.role)}</span>"
         f"</div>"
         f"<div class='user-profile-meta'>"
-        f"ID: <strong>{html.escape(user.student_id)}</strong> &bull; {html.escape(user.grade_level)}"
+        f"ID: <strong>{html.escape(user.student_id)}</strong> &bull; {html.escape(user.grade_level)}<br>"
+        f"🏫 {html.escape(user.school_name)}"
         f"</div>"
         f"</div>"
     )
@@ -1177,6 +1189,12 @@ def _render_login_portal() -> None:
                     value="Grade 11",
                     key="reg_grade_level_input",
                 )
+            reg_school_name = st.text_input(
+                "School / Institution Name",
+                value=DEFAULT_SCHOOL,
+                placeholder="e.g., Westview Academy of Arts & Sciences",
+                key="reg_school_name_input",
+            )
             reg_password = st.text_input(
                 "Create Password (min. 6 characters)",
                 type="password",
@@ -1192,6 +1210,7 @@ def _render_login_portal() -> None:
                     role=reg_role,
                     student_id=reg_student_id,
                     grade_level=reg_grade_level,
+                    school_name=reg_school_name,
                 )
                 if err_msg:
                     st.error(err_msg)
@@ -1201,9 +1220,11 @@ def _render_login_portal() -> None:
                             "student_name": new_user.full_name,
                             "student_id": new_user.student_id,
                             "grade_level": new_user.grade_level,
+                            "school_name": new_user.school_name,
                             "username": new_user.username,
+                            "is_demo": False,
                             "custom_remarks": "",
-                            "subjects": [dict(r) for r in DEFAULT_SUBJECTS],
+                            "subjects": [],
                         }
                     _login_as(new_user)
                     st.rerun()
@@ -1340,8 +1361,13 @@ def main() -> None:
             # School-Wide Master Roster CSV Export
             master_buf = io.StringIO()
             m_writer = csv.writer(master_buf)
-            m_writer.writerow(["Student ID", "Student Name", "Grade Level", "Overall %", "Letter Grade", "GPA", "Status"])
+            m_writer.writerow(["Student ID", "Student Name", "School", "Grade Level", "Overall %", "Letter Grade", "GPA", "Status"])
             for sid, srec in st.session_state.roster.items():
+                s_school = str(srec.get("school_name", policy["school_name"]))
+                raw_subjs = srec.get("subjects", [])
+                if not raw_subjs:
+                    m_writer.writerow([sid, str(srec["student_name"]), s_school, str(srec["grade_level"]), "N/A", "N/A", "N/A", "No Grades Yet"])
+                    continue
                 s_inputs = [
                     SubjectInput(
                         name=str(r["name"]),
@@ -1349,19 +1375,20 @@ def main() -> None:
                         max_marks=float(r["max_marks"]),
                         credits=float(r["credits"]),
                     )
-                    for r in srec["subjects"]  # type: ignore[index]
+                    for r in raw_subjs  # type: ignore[union-attr]
                 ]
                 s_sum = calculate_report_card(
                     s_inputs,
                     student_name=str(srec["student_name"]),
                     student_id=sid,
                     grade_level=str(srec["grade_level"]),
+                    school_name=s_school,
                     passing_percentage=float(passing_percentage),
                     scale=scale,
                     require_all_subjects_pass=require_all_subjects_pass,
                     use_credit_weights=use_credit_weights,
                 )
-                m_writer.writerow([sid, s_sum.student_name, s_sum.grade_level, f"{s_sum.overall_percentage:.2f}%", s_sum.overall_letter_grade, f"{s_sum.gpa:.2f}", s_sum.status])
+                m_writer.writerow([sid, s_sum.student_name, s_school, s_sum.grade_level, f"{s_sum.overall_percentage:.2f}%", s_sum.overall_letter_grade, f"{s_sum.gpa:.2f}", s_sum.status])
             st.download_button(
                 "📥 Download Master School Roster & Grades (.csv)",
                 data=master_buf.getvalue().encode("utf-8"),
@@ -1370,14 +1397,28 @@ def main() -> None:
                 use_container_width=True,
             )
 
-    # Teacher & Admin Classroom Roster Selector
+    # Teacher & Admin Classroom Roster Selector (Teachers see students in their own school)
     active_rec = st.session_state.roster.get(st.session_state.active_student_id, {})
     custom_advisor_remark = str(active_rec.get("custom_remarks", ""))
     if is_staff:
         with st.expander("👩‍🏫 Teacher Classroom Roster & Advisor Controls", expanded=True):
-            roster_ids = list(st.session_state.roster.keys())
+            if is_admin:
+                roster_ids = list(st.session_state.roster.keys())
+                st.caption(f"🛡️ **Administrator View:** Showing all {len(roster_ids)} students across all schools")
+            else:
+                teacher_school = current_user.school_name.strip().lower()
+                roster_ids = [
+                    sid
+                    for sid, srec in st.session_state.roster.items()
+                    if str(srec.get("school_name", DEFAULT_SCHOOL)).strip().lower() == teacher_school
+                ]
+                st.caption(
+                    f"🏫 **School Roster Filter:** Showing {len(roster_ids)} student(s) enrolled at **{current_user.school_name}**"
+                )
+            if not roster_ids:
+                roster_ids = list(st.session_state.roster.keys())
             r_labels = [
-                f"{sid} — {st.session_state.roster[sid]['student_name']} ({st.session_state.roster[sid]['grade_level']})"
+                f"{sid} — {st.session_state.roster[sid]['student_name']} ({st.session_state.roster[sid]['grade_level']} • {st.session_state.roster[sid].get('school_name', DEFAULT_SCHOOL)})"
                 for sid in roster_ids
             ]
             curr_idx = (
@@ -1388,7 +1429,7 @@ def main() -> None:
             tcol1, tcol2, tcol3 = st.columns([3.0, 1.5, 1.5])
             with tcol1:
                 chosen_label = st.selectbox(
-                    "Select Student from Class Roster",
+                    "Select Student from School Roster",
                     options=r_labels,
                     index=curr_idx,
                     key="teacher_roster_select",
@@ -1429,7 +1470,11 @@ def main() -> None:
         else str(active_rec.get("grade_level", "Grade 11"))
     )
     term = str(policy["term"])
-    school_name = str(policy["school_name"])
+    school_name = (
+        current_user.school_name
+        if current_user.role == ROLE_STUDENT
+        else str(active_rec.get("school_name", policy["school_name"]))
+    )
 
     # Top Page Navigation Bar
     nav_col1, nav_col2 = st.columns(2)
@@ -1453,125 +1498,238 @@ def main() -> None:
 
     st.write("")
 
-    # Page 1: Coursework & Subject Marks Entry
+    # Identify lowest-percentage subject for "Remove Lowest Grade" preview
+    lowest_row = None
+    if len(st.session_state.subjects) > 1:
+        lowest_row = min(
+            st.session_state.subjects,
+            key=lambda r: (float(r["marks"]) / max(float(r["max_marks"]), 1.0)) * 100.0,
+        )
+
+    # Page 1: Coursework & Assignment Marks (Editable ONLY by Teacher; Read-Only Table for Students)
+    can_edit_grades = current_user.role == ROLE_TEACHER
     if st.session_state.active_page == "marks":
+        mode_note = (
+            "Read-Only Gradebook (Only your Teacher can add or change assignment grades)"
+            if not can_edit_grades
+            else f"Teacher Gradebook — Editing Student: <strong>{html.escape(student_name)}</strong> ({html.escape(student_id)})"
+        )
         st.markdown(
             "<div class='section-head'>"
             "<div class='section-title-wrap'>"
             "<span class='step-pill'>Page 1</span>"
-            "<h2 class='section-title'>Coursework &amp; Subject Marks</h2>"
+            "<h2 class='section-title'>Coursework &amp; Assignment Marks</h2>"
             "</div>"
-            f"<span class='section-sub'>Student: <strong>{html.escape(student_name)}</strong> ({html.escape(student_id)})</span>"
+            f"<span class='section-sub'>{mode_note}</span>"
             "</div>",
             unsafe_allow_html=True,
         )
 
         with _card_container():
-            # Optional CSV Import
-            with st.expander("📂 Bulk Import Subject Marks from CSV"):
-                st.caption(
-                    "Upload a CSV with columns `Subject`, `Marks`, `Max Marks` (optional), and `Credits` (optional)."
+            if not st.session_state.subjects and not can_edit_grades:
+                st.warning(
+                    "📋 No assignments or test results have been entered by your teacher yet. "
+                    "Once a teacher at your school inputs and saves your grades, they will appear here."
                 )
-                uploaded_file = st.file_uploader("Choose CSV file", type=["csv"])
-                if uploaded_file is not None:
-                    try:
-                        content = uploaded_file.getvalue().decode("utf-8-sig")
-                        imported_rows = _parse_uploaded_csv(content)
-                        if imported_rows:
-                            if st.button("Load Uploaded Subjects", type="secondary"):
-                                st.session_state.subjects = imported_rows
-                                st.session_state.next_id = max(r["id"] for r in imported_rows) + 1
-                                st.session_state.show_report = True
-                                st.session_state.active_page = "report"
-                                st.rerun()
-                        else:
-                            st.warning("No valid subject rows found in the uploaded CSV.")
-                    except Exception as exc:  # noqa: BLE001
-                        st.error(f"Could not parse CSV file: {exc}")
+            elif not can_edit_grades:
+                # Pure Read-Only HTML Table for Students (zero input widgets so grades cannot be changed)
+                ro_rows = []
+                active_for_avg = []
+                for row in st.session_state.subjects:
+                    rid = int(row["id"])
+                    is_dropped_row = (
+                        bool(st.session_state.drop_lowest_grade)
+                        and lowest_row is not None
+                        and int(lowest_row["id"]) == rid
+                    )
+                    score_val = float(row["marks"])
+                    pct_val = round((score_val / 100.0) * 100.0, 2)
+                    letter, _ = get_letter_grade_and_gpa(
+                        pct_val, passing_percentage=float(passing_percentage), scale=scale
+                    )
+                    g_bg, g_fg, _ = get_grade_tier_colors(letter)
+                    if is_dropped_row:
+                        status_html = "<span class='honor-pill'>Dropped (Excluded)</span>"
+                    else:
+                        active_for_avg.append(pct_val)
+                        passed_row = pct_val >= float(passing_percentage)
+                        p_cls = "pill-pass" if passed_row else "pill-fail"
+                        p_lbl = "✓ PASS" if passed_row else "✕ FAIL"
+                        status_html = f"<span class='{p_cls}'>{p_lbl}</span>"
+                    ro_rows.append(
+                        f"<tr>"
+                        f"<td><strong>{html.escape(str(row['name']))}</strong></td>"
+                        f"<td class='rc-num'><strong>{score_val:g} / 100</strong></td>"
+                        f"<td class='rc-num'>{pct_val:.1f}%</td>"
+                        f"<td class='rc-center'><span class='grade-badge' style='background:{g_bg};color:{g_fg};'>{html.escape(letter)}</span></td>"
+                        f"<td class='rc-center'>{status_html}</td>"
+                        f"</tr>"
+                    )
+                avg_pct = round(sum(active_for_avg) / len(active_for_avg), 2) if active_for_avg else 0.0
+                avg_letter, _ = get_letter_grade_and_gpa(
+                    avg_pct, passing_percentage=float(passing_percentage), scale=scale
+                )
+                st.markdown(
+                    "<table class='rc-table'>"
+                    "<thead><tr>"
+                    "<th>Assignment / Test Name</th>"
+                    "<th class='rc-num'>Score (Over 100)</th>"
+                    "<th class='rc-num'>Assignment %</th>"
+                    "<th class='rc-center'>Letter Grade</th>"
+                    "<th class='rc-center'>Status</th>"
+                    "</tr></thead>"
+                    f"<tbody>{''.join(ro_rows)}</tbody>"
+                    "<tfoot><tr>"
+                    f"<td>Final Averaged Grade ({len(active_for_avg)} Assignments)</td>"
+                    f"<td class='rc-num'>{avg_pct:g} / 100</td>"
+                    f"<td class='rc-num'>{avg_pct:.2f}%</td>"
+                    f"<td class='rc-center'>{html.escape(avg_letter)}</td>"
+                    f"<td class='rc-center'>{'PASS' if avg_pct >= float(passing_percentage) else 'FAIL'}</td>"
+                    "</tr></tfoot>"
+                    "</table>",
+                    unsafe_allow_html=True,
+                )
+            else:
+                # Teacher-Only Assignment Editor (each assignment scored out of 100 and averaged out)
+                with st.expander("📂 Bulk Import Assignments from CSV"):
+                    st.caption("Upload a CSV with columns `Subject` (or `Assignment`) and `Marks` (score out of 100).")
+                    uploaded_file = st.file_uploader("Choose CSV file", type=["csv"])
+                    if uploaded_file is not None:
+                        try:
+                            content = uploaded_file.getvalue().decode("utf-8-sig")
+                            imported_rows = _parse_uploaded_csv(content)
+                            if imported_rows:
+                                if st.button("Load Uploaded Assignments", type="secondary"):
+                                    for r in imported_rows:
+                                        r["max_marks"] = 100.0
+                                        r["credits"] = 1.0
+                                    st.session_state.subjects = imported_rows
+                                    st.session_state.next_id = max(r["id"] for r in imported_rows) + 1
+                                    if st.session_state.active_student_id in st.session_state.roster:
+                                        st.session_state.roster[st.session_state.active_student_id]["subjects"] = [
+                                            dict(r) for r in st.session_state.subjects
+                                        ]
+                                    st.rerun()
+                            else:
+                                st.warning("No valid assignment rows found in the uploaded CSV.")
+                        except Exception as exc:  # noqa: BLE001
+                            st.error(f"Could not parse CSV file: {exc}")
 
-            hdr1, hdr2, hdr3, hdr4, hdr5, hdr6 = st.columns([3.0, 1.4, 1.4, 1.1, 1.5, 0.6])
-            hdr1.markdown("**Subject / Course Name**")
-            hdr2.markdown("**Marks Obtained**")
-            hdr3.markdown("**Maximum Marks**")
-            hdr4.markdown("**Credits**")
-            hdr5.markdown("**Live Grade**")
-            hdr6.markdown("**Del**")
+                hdr1, hdr2, hdr3, hdr4 = st.columns([4.2, 2.2, 1.8, 0.8])
+                hdr1.markdown("**Assignment / Test Name**")
+                hdr2.markdown("**Score (/ 100 %)**")
+                hdr3.markdown("**Assignment Grade**")
+                hdr4.markdown("**Del**")
 
-            for row in list(st.session_state.subjects):
-                rid = int(row["id"])
-                c1, c2, c3, c4, c5, c6 = st.columns([3.0, 1.4, 1.4, 1.1, 1.5, 0.6])
-                with c1:
-                    row["name"] = st.text_input(
-                        f"Subject Name {rid}",
-                        value=str(row["name"]),
-                        placeholder="e.g., Physics",
-                        key=f"subj_name_{rid}",
-                        label_visibility="collapsed",
-                    )
-                with c2:
-                    row["marks"] = st.number_input(
-                        f"Marks Obtained {rid}",
-                        min_value=0.0,
-                        max_value=10000.0,
-                        value=float(row["marks"]),
-                        step=1.0,
-                        key=f"subj_marks_{rid}",
-                        label_visibility="collapsed",
-                    )
-                with c3:
-                    row["max_marks"] = st.number_input(
-                        f"Max Marks {rid}",
-                        min_value=1.0,
-                        max_value=10000.0,
-                        value=float(row["max_marks"]),
-                        step=1.0,
-                        key=f"subj_max_{rid}",
-                        label_visibility="collapsed",
-                    )
-                with c4:
-                    row["credits"] = st.number_input(
-                        f"Credits {rid}",
-                        min_value=0.5,
-                        max_value=20.0,
-                        value=float(row["credits"]),
-                        step=0.5,
-                        key=f"subj_cred_{rid}",
-                        label_visibility="collapsed",
-                    )
-                with c5:
-                    st.markdown(
-                        _render_live_row_badge(
-                            float(row["marks"]),
-                            float(row["max_marks"]),
-                            float(passing_percentage),
-                            scale,
-                        ),
-                        unsafe_allow_html=True,
-                    )
-                with c6:
-                    if st.button(
-                        "✕",
-                        key=f"subj_del_{rid}",
-                        help="Remove this subject",
-                        disabled=len(st.session_state.subjects) <= 1,
-                    ):
-                        _remove_subject_row(rid)
+                for row in list(st.session_state.subjects):
+                    rid = int(row["id"])
+                    row["max_marks"] = 100.0
+                    row["credits"] = 1.0
+                    c1, c2, c3, c4 = st.columns([4.2, 2.2, 1.8, 0.8])
+                    with c1:
+                        row["name"] = st.text_input(
+                            f"Assignment Name {rid}",
+                            value=str(row["name"]),
+                            placeholder="e.g., Algebra Unit Test #1",
+                            key=f"subj_name_{rid}",
+                            label_visibility="collapsed",
+                        )
+                    with c2:
+                        row["marks"] = st.number_input(
+                            f"Score over 100 {rid}",
+                            min_value=0.0,
+                            max_value=100.0,
+                            value=min(float(row["marks"]), 100.0),
+                            step=1.0,
+                            key=f"subj_marks_{rid}",
+                            label_visibility="collapsed",
+                        )
+                    with c3:
+                        st.markdown(
+                            _render_live_row_badge(
+                                float(row["marks"]),
+                                100.0,
+                                float(passing_percentage),
+                                scale,
+                            ),
+                            unsafe_allow_html=True,
+                        )
+                    with c4:
+                        if st.button(
+                            "✕",
+                            key=f"subj_del_{rid}",
+                            help="Remove this assignment",
+                            disabled=len(st.session_state.subjects) <= 1,
+                        ):
+                            _remove_subject_row(rid)
+                            if st.session_state.active_student_id in st.session_state.roster:
+                                st.session_state.roster[st.session_state.active_student_id]["subjects"] = [
+                                    dict(r) for r in st.session_state.subjects
+                                ]
+                            st.rerun()
+
+                # Auto-sync teacher edits to the active student's roster record
+                if st.session_state.active_student_id in st.session_state.roster:
+                    st.session_state.roster[st.session_state.active_student_id]["subjects"] = [
+                        dict(r) for r in st.session_state.subjects
+                    ]
+
+                st.write("")
+                btn_col1, btn_col2, btn_col3, _ = st.columns([2.2, 1.8, 2.0, 3.0])
+                with btn_col1:
+                    if st.button("➕ Add Assignment", use_container_width=True):
+                        _add_subject_row(
+                            name=f"Assignment {len(st.session_state.subjects) + 1}",
+                            marks=85.0,
+                            max_marks=100.0,
+                            credits=1.0,
+                        )
+                        if st.session_state.active_student_id in st.session_state.roster:
+                            st.session_state.roster[st.session_state.active_student_id]["subjects"] = [
+                                dict(r) for r in st.session_state.subjects
+                            ]
                         st.rerun()
+                with btn_col2:
+                    if st.button("🧹 Clear Scores", use_container_width=True):
+                        _clear_all_marks()
+                        st.rerun()
+                with btn_col3:
+                    if st.button("🔄 Reset Sample Assignments", use_container_width=True):
+                        _reset_sample_subjects()
+                        st.rerun()
+                st.write("")
 
-            st.write("")
-            btn_col1, btn_col2, btn_col3, _ = st.columns([1.8, 1.8, 2.0, 3.4])
-            with btn_col1:
-                if st.button("➕ Add Subject", use_container_width=True):
-                    _add_subject_row(name=f"Subject {len(st.session_state.subjects) + 1}")
+            # Demo-only button to re-roll random assignments & test results
+            if current_user.username in DEMO_STUDENT_USERNAMES:
+                if st.button(
+                    "🎲 Generate New Random Demo Assignments & Test Results",
+                    use_container_width=True,
+                ):
+                    new_demo_rows = generate_random_demo_assignments(5)
+                    st.session_state.roster[current_user.student_id]["subjects"] = new_demo_rows
+                    st.session_state.subjects = [dict(r) for r in new_demo_rows]
+                    st.session_state.drop_lowest_grade = False
                     st.rerun()
-            with btn_col2:
-                if st.button("🧹 Clear Marks", use_container_width=True):
-                    _clear_all_marks()
-                    st.rerun()
-            with btn_col3:
-                if st.button("🔄 Reset Sample Data", use_container_width=True):
-                    _reset_sample_subjects()
-                    st.rerun()
+
+            # Button to Remove / Restore Lowest Grade to preview impact
+            if lowest_row is not None:
+                low_pct = (float(lowest_row["marks"]) / max(float(lowest_row["max_marks"]), 1.0)) * 100.0
+                if not st.session_state.drop_lowest_grade:
+                    if st.button(
+                        f"📉 Remove Lowest Grade ({lowest_row['name']} — {low_pct:.1f}%) to See Result",
+                        use_container_width=True,
+                    ):
+                        st.session_state.drop_lowest_grade = True
+                        st.session_state.show_report = True
+                        st.session_state.active_page = "report"
+                        st.rerun()
+                else:
+                    if st.button(
+                        f"🔄 Restore Lowest Grade ({lowest_row['name']} — {low_pct:.1f}%)",
+                        use_container_width=True,
+                    ):
+                        st.session_state.drop_lowest_grade = False
+                        st.rerun()
 
             st.write("")
             if st.button(
@@ -1585,6 +1743,33 @@ def main() -> None:
 
     # Page 2: Official Student Report Card & Analytics
     if st.session_state.active_page == "report":
+        active_rows = list(st.session_state.subjects)
+        if st.session_state.drop_lowest_grade and lowest_row is not None and len(active_rows) > 1:
+            active_rows = [r for r in active_rows if int(r["id"]) != int(lowest_row["id"])]
+            low_pct = (float(lowest_row["marks"]) / max(float(lowest_row["max_marks"]), 1.0)) * 100.0
+            st.markdown(
+                f"<div class='demo-creds-box' style='margin-bottom:14px;'>"
+                f"📉 <strong>Lowest Grade Removed Preview:</strong> Excluded "
+                f"<strong>{html.escape(str(lowest_row['name']))}</strong> ({low_pct:.1f}%) "
+                f"to show your recalculated GPA and Report Card result."
+                f"</div>",
+                unsafe_allow_html=True,
+            )
+            if st.button(
+                f"🔄 Restore Lowest Grade ({lowest_row['name']} — {low_pct:.1f}%)",
+                use_container_width=True,
+            ):
+                st.session_state.drop_lowest_grade = False
+                st.rerun()
+        elif lowest_row is not None:
+            low_pct = (float(lowest_row["marks"]) / max(float(lowest_row["max_marks"]), 1.0)) * 100.0
+            if st.button(
+                f"📉 Remove Lowest Grade ({lowest_row['name']} — {low_pct:.1f}%) to See Result",
+                use_container_width=True,
+            ):
+                st.session_state.drop_lowest_grade = True
+                st.rerun()
+
         subject_inputs = [
             SubjectInput(
                 name=str(r["name"]),
@@ -1595,7 +1780,7 @@ def main() -> None:
                 max_marks=float(r["max_marks"]),
                 credits=float(r["credits"]),
             )
-            for r in st.session_state.subjects
+            for r in active_rows
         ]
 
         validation_errors = validate_subjects(subject_inputs)

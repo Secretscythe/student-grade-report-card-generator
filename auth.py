@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import hashlib
 import hmac
+import random
 import secrets
 from dataclasses import dataclass
 
@@ -11,6 +12,45 @@ ROLE_STUDENT = "Student"
 ROLE_TEACHER = "Teacher"
 ROLE_ADMIN = "Administrator"
 VALID_ROLES = (ROLE_STUDENT, ROLE_TEACHER, ROLE_ADMIN)
+DEMO_STUDENT_USERNAMES = ("alex", "sam", "priya")
+
+RANDOM_ASSIGNMENT_POOL: tuple[tuple[str, float, float], ...] = (
+    ("Mathematics — Unit Test #1", 100.0, 1.0),
+    ("Chemistry — Titration Lab Report", 100.0, 1.0),
+    ("English Literature — Critical Essay", 100.0, 1.0),
+    ("World History — Source Analysis Quiz", 100.0, 1.0),
+    ("Computer Science — Algorithm Project", 100.0, 1.0),
+    ("Physics — Mechanics Midterm Exam", 100.0, 1.0),
+    ("Biology — Cellular Respiration Lab", 100.0, 1.0),
+    ("Economics — Macroeconomics Quiz", 100.0, 1.0),
+    ("Calculus — Derivatives Assessment", 100.0, 1.0),
+    ("Art & Design — Portfolio Critique", 100.0, 1.0),
+)
+
+
+def generate_random_demo_assignments(count: int = 5) -> list[dict[str, object]]:
+    """Generate randomized assignment & test results for demo student logins only."""
+    chosen = random.sample(RANDOM_ASSIGNMENT_POOL, k=min(count, len(RANDOM_ASSIGNMENT_POOL)))
+    rows: list[dict[str, object]] = []
+    for idx, (title, max_marks, credits) in enumerate(chosen, start=1):
+        score = float(random.randint(58, 99))
+        rows.append(
+            {
+                "id": idx,
+                "name": title,
+                "marks": score,
+                "max_marks": max_marks,
+                "credits": credits,
+            }
+        )
+    return rows
+
+DEFAULT_SCHOOL = "Westview Academy of Arts & Sciences"
+DEFAULT_SCHOOLS = (
+    "Westview Academy of Arts & Sciences",
+    "Oakridge International High School",
+    "Northstar STEM Preparatory",
+)
 
 
 @dataclass(frozen=True)
@@ -24,6 +64,7 @@ class UserAccount:
     grade_level: str
     password_salt: str
     password_hash: str
+    school_name: str = DEFAULT_SCHOOL
 
 
 def hash_password(password: str, salt: str | None = None) -> tuple[str, str]:
@@ -52,6 +93,7 @@ def _make_user(
     student_id: str,
     grade_level: str,
     fixed_salt: str,
+    school_name: str = DEFAULT_SCHOOL,
 ) -> UserAccount:
     salt, pwd_hash = hash_password(password, salt=fixed_salt)
     return UserAccount(
@@ -62,6 +104,7 @@ def _make_user(
         grade_level=grade_level,
         password_salt=salt,
         password_hash=pwd_hash,
+        school_name=school_name,
     )
 
 
@@ -118,49 +161,37 @@ def get_default_users() -> dict[str, UserAccount]:
 
 
 def get_default_student_roster() -> dict[str, dict[str, object]]:
-    """Return initial multi-student academic records for Teacher and Admin views."""
+    """Return initial multi-student academic records for Demo views."""
     return {
         "STU-2026-104": {
             "student_name": "Alex Johnson",
             "student_id": "STU-2026-104",
             "grade_level": "Grade 11",
+            "school_name": DEFAULT_SCHOOL,
             "username": "alex",
+            "is_demo": True,
             "custom_remarks": "",
-            "subjects": [
-                {"id": 1, "name": "Mathematics", "marks": 92.0, "max_marks": 100.0, "credits": 1.0},
-                {"id": 2, "name": "Science", "marks": 86.0, "max_marks": 100.0, "credits": 1.0},
-                {"id": 3, "name": "English Literature", "marks": 88.0, "max_marks": 100.0, "credits": 1.0},
-                {"id": 4, "name": "World History", "marks": 79.0, "max_marks": 100.0, "credits": 1.0},
-                {"id": 5, "name": "Computer Science", "marks": 95.0, "max_marks": 100.0, "credits": 1.0},
-            ],
+            "subjects": generate_random_demo_assignments(5),
         },
         "STU-2026-209": {
             "student_name": "Sam Rivera",
             "student_id": "STU-2026-209",
             "grade_level": "Grade 12",
+            "school_name": DEFAULT_SCHOOL,
             "username": "sam",
+            "is_demo": True,
             "custom_remarks": "",
-            "subjects": [
-                {"id": 1, "name": "Mathematics", "marks": 96.0, "max_marks": 100.0, "credits": 1.0},
-                {"id": 2, "name": "Physics", "marks": 94.0, "max_marks": 100.0, "credits": 1.0},
-                {"id": 3, "name": "English Literature", "marks": 91.0, "max_marks": 100.0, "credits": 1.0},
-                {"id": 4, "name": "Economics", "marks": 89.0, "max_marks": 100.0, "credits": 1.0},
-                {"id": 5, "name": "Computer Science", "marks": 98.0, "max_marks": 100.0, "credits": 1.0},
-            ],
+            "subjects": generate_random_demo_assignments(5),
         },
         "STU-2026-315": {
             "student_name": "Priya Patel",
             "student_id": "STU-2026-315",
             "grade_level": "Grade 11",
+            "school_name": DEFAULT_SCHOOL,
             "username": "priya",
+            "is_demo": True,
             "custom_remarks": "Scheduled for weekly Mathematics tutoring session.",
-            "subjects": [
-                {"id": 1, "name": "Mathematics", "marks": 54.0, "max_marks": 100.0, "credits": 1.0},
-                {"id": 2, "name": "Biology", "marks": 78.0, "max_marks": 100.0, "credits": 1.0},
-                {"id": 3, "name": "English Literature", "marks": 82.0, "max_marks": 100.0, "credits": 1.0},
-                {"id": 4, "name": "World History", "marks": 75.0, "max_marks": 100.0, "credits": 1.0},
-                {"id": 5, "name": "Art & Design", "marks": 88.0, "max_marks": 100.0, "credits": 1.0},
-            ],
+            "subjects": generate_random_demo_assignments(5),
         },
     }
 
@@ -191,6 +222,7 @@ def register_user(
     role: str = ROLE_STUDENT,
     student_id: str = "STU-2026-500",
     grade_level: str = "Grade 11",
+    school_name: str = DEFAULT_SCHOOL,
 ) -> tuple[UserAccount | None, str | None]:
     """Register a new Student, Teacher, or Administrator account.
 
@@ -200,6 +232,7 @@ def register_user(
     clean_name = full_name.strip()
     clean_id = student_id.strip() or "STU-2026-500"
     clean_grade = grade_level.strip() or "Grade 11"
+    clean_school = school_name.strip() or DEFAULT_SCHOOL
 
     if len(clean_user) < 3:
         return (None, "Username must be at least 3 characters long.")
@@ -222,6 +255,7 @@ def register_user(
         grade_level=clean_grade,
         password_salt=salt,
         password_hash=pwd_hash,
+        school_name=clean_school,
     )
     users[clean_user] = new_account
     return (new_account, None)

@@ -162,7 +162,7 @@ class TestGradingCalculations(unittest.TestCase):
         self.assertIsNone(authenticate_user(users, "alex", "wrongpass"))
         self.assertIsNone(authenticate_user(users, "unknown", "student123"))
 
-        # Register a new account
+        # Register a new account with a custom school
         new_user, err = register_user(
             users,
             username="jordan",
@@ -171,9 +171,12 @@ class TestGradingCalculations(unittest.TestCase):
             role=ROLE_STUDENT,
             student_id="STU-2026-400",
             grade_level="Grade 10",
+            school_name="Oakridge International High School",
         )
         self.assertIsNone(err)
         self.assertIsNotNone(new_user)
+        assert new_user is not None
+        self.assertEqual(new_user.school_name, "Oakridge International High School")
         self.assertIsNotNone(authenticate_user(users, "jordan", "securepassword"))
 
         # Admin account deletion protection
