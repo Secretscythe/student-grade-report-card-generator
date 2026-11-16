@@ -14,33 +14,84 @@ ROLE_ADMIN = "Administrator"
 VALID_ROLES = (ROLE_STUDENT, ROLE_TEACHER, ROLE_ADMIN)
 DEMO_STUDENT_USERNAMES = ("alex", "sam", "priya")
 
-RANDOM_ASSIGNMENT_POOL: tuple[tuple[str, float, float], ...] = (
-    ("Mathematics — Unit Test #1", 100.0, 1.0),
-    ("Chemistry — Titration Lab Report", 100.0, 1.0),
-    ("English Literature — Critical Essay", 100.0, 1.0),
-    ("World History — Source Analysis Quiz", 100.0, 1.0),
-    ("Computer Science — Algorithm Project", 100.0, 1.0),
-    ("Physics — Mechanics Midterm Exam", 100.0, 1.0),
-    ("Biology — Cellular Respiration Lab", 100.0, 1.0),
-    ("Economics — Macroeconomics Quiz", 100.0, 1.0),
-    ("Calculus — Derivatives Assessment", 100.0, 1.0),
-    ("Art & Design — Portfolio Critique", 100.0, 1.0),
+CORE_SUBJECTS: tuple[str, ...] = ("History", "Science", "Math", "English")
+ELECTIVE_OPTIONS: tuple[str, ...] = (
+    "Computer Science",
+    "Art & Design",
+    "Spanish",
+    "Music",
+    "Physical Education",
+    "Economics",
+    "Psychology",
+    "Robotics",
+    "Drama & Theater",
+    "Business Studies",
 )
 
 
-def generate_random_demo_assignments(count: int = 5) -> list[dict[str, object]]:
-    """Generate randomized assignment & test results for demo student logins only."""
-    chosen = random.sample(RANDOM_ASSIGNMENT_POOL, k=min(count, len(RANDOM_ASSIGNMENT_POOL)))
+def get_student_subject_names(
+    elective_1: str = "Computer Science",
+    elective_2: str = "Art & Design",
+) -> list[str]:
+    """Return the 4 required core subjects plus the student's 2 chosen electives."""
+    e1 = elective_1.strip() or "Computer Science"
+    e2 = elective_2.strip() or "Art & Design"
+    if e2.lower() == e1.lower():
+        e2 = f"{e2} II"
+    return [*CORE_SUBJECTS, e1, e2]
+
+
+def build_empty_student_subjects(
+    elective_1: str = "Computer Science",
+    elective_2: str = "Art & Design",
+) -> list[dict[str, object]]:
+    """Build the 6 subject rows (History, Science, Math, English + 2 Electives) with empty assignments."""
+    subject_names = get_student_subject_names(elective_1, elective_2)
+    return [
+        {
+            "id": idx,
+            "name": subj_name,
+            "marks": 0.0,
+            "max_marks": 100.0,
+            "credits": 1.0,
+            "assignments": [],
+        }
+        for idx, subj_name in enumerate(subject_names, start=1)
+    ]
+
+
+def generate_random_demo_assignments(
+    count: int = 6,
+    electives: tuple[str, str] = ("Computer Science", "Art & Design"),
+) -> list[dict[str, object]]:
+    """Generate the 6 subjects (History, Science, Math, English + 2 electives) with random assignments for demo logins."""
+    subject_names = get_student_subject_names(electives[0], electives[1])
+    task_types = ("Homework Assignment", "Unit Quiz", "Midterm Test", "Project / Lab")
     rows: list[dict[str, object]] = []
-    for idx, (title, max_marks, credits) in enumerate(chosen, start=1):
-        score = float(random.randint(58, 99))
+    for idx, subj_name in enumerate(subject_names[:count], start=1):
+        chosen_tasks = random.sample(task_types, k=3)
+        subj_assignments = []
+        for a_idx, t_label in enumerate(chosen_tasks, start=1):
+            score = float(random.randint(62, 99))
+            subj_assignments.append(
+                {
+                    "id": idx * 100 + a_idx,
+                    "title": f"{subj_name} — {t_label}",
+                    "score": score,
+                }
+            )
+        avg_score = round(
+            sum(float(a["score"]) for a in subj_assignments) / len(subj_assignments),
+            2,
+        )
         rows.append(
             {
                 "id": idx,
-                "name": title,
-                "marks": score,
-                "max_marks": max_marks,
-                "credits": credits,
+                "name": subj_name,
+                "marks": avg_score,
+                "max_marks": 100.0,
+                "credits": 1.0,
+                "assignments": subj_assignments,
             }
         )
     return rows
@@ -65,6 +116,7 @@ class UserAccount:
     password_salt: str
     password_hash: str
     school_name: str = DEFAULT_SCHOOL
+    electives: tuple[str, str] = ("Computer Science", "Art & Design")
 
 
 def hash_password(password: str, salt: str | None = None) -> tuple[str, str]:
@@ -169,9 +221,10 @@ def get_default_student_roster() -> dict[str, dict[str, object]]:
             "grade_level": "Grade 11",
             "school_name": DEFAULT_SCHOOL,
             "username": "alex",
+            "electives": ["Computer Science", "Art & Design"],
             "is_demo": True,
             "custom_remarks": "",
-            "subjects": generate_random_demo_assignments(5),
+            "subjects": generate_random_demo_assignments(6, ("Computer Science", "Art & Design")),
         },
         "STU-2026-209": {
             "student_name": "Sam Rivera",
@@ -179,9 +232,10 @@ def get_default_student_roster() -> dict[str, dict[str, object]]:
             "grade_level": "Grade 12",
             "school_name": DEFAULT_SCHOOL,
             "username": "sam",
+            "electives": ["Economics", "Spanish"],
             "is_demo": True,
             "custom_remarks": "",
-            "subjects": generate_random_demo_assignments(5),
+            "subjects": generate_random_demo_assignments(6, ("Economics", "Spanish")),
         },
         "STU-2026-315": {
             "student_name": "Priya Patel",
@@ -189,9 +243,10 @@ def get_default_student_roster() -> dict[str, dict[str, object]]:
             "grade_level": "Grade 11",
             "school_name": DEFAULT_SCHOOL,
             "username": "priya",
+            "electives": ["Robotics", "Music"],
             "is_demo": True,
             "custom_remarks": "Scheduled for weekly Mathematics tutoring session.",
-            "subjects": generate_random_demo_assignments(5),
+            "subjects": generate_random_demo_assignments(6, ("Robotics", "Music")),
         },
     }
 
@@ -223,6 +278,7 @@ def register_user(
     student_id: str = "STU-2026-500",
     grade_level: str = "Grade 11",
     school_name: str = DEFAULT_SCHOOL,
+    electives: tuple[str, str] = ("Computer Science", "Art & Design"),
 ) -> tuple[UserAccount | None, str | None]:
     """Register a new Student, Teacher, or Administrator account.
 
@@ -256,6 +312,7 @@ def register_user(
         password_salt=salt,
         password_hash=pwd_hash,
         school_name=clean_school,
+        electives=electives,
     )
     users[clean_user] = new_account
     return (new_account, None)

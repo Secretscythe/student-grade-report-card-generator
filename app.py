@@ -12,18 +12,22 @@ from typing import Any
 import streamlit as st
 
 from auth import (
+    CORE_SUBJECTS,
     DEFAULT_SCHOOL,
     DEMO_STUDENT_USERNAMES,
+    ELECTIVE_OPTIONS,
     ROLE_ADMIN,
     ROLE_STUDENT,
     ROLE_TEACHER,
     VALID_ROLES,
     UserAccount,
     authenticate_user,
+    build_empty_student_subjects,
     delete_user_account,
     generate_random_demo_assignments,
     get_default_student_roster,
     get_default_users,
+    get_student_subject_names,
     register_user,
 )
 from grading import (
@@ -664,11 +668,12 @@ CUSTOM_CSS = """
 
 
 DEFAULT_SUBJECTS: list[dict[str, object]] = [
-    {"id": 1, "name": "Mathematics", "marks": 92.0, "max_marks": 100.0, "credits": 1.0},
-    {"id": 2, "name": "Science", "marks": 86.0, "max_marks": 100.0, "credits": 1.0},
-    {"id": 3, "name": "English Literature", "marks": 88.0, "max_marks": 100.0, "credits": 1.0},
-    {"id": 4, "name": "World History", "marks": 79.0, "max_marks": 100.0, "credits": 1.0},
+    {"id": 1, "name": "History", "marks": 84.0, "max_marks": 100.0, "credits": 1.0},
+    {"id": 2, "name": "Science", "marks": 88.0, "max_marks": 100.0, "credits": 1.0},
+    {"id": 3, "name": "Math", "marks": 92.0, "max_marks": 100.0, "credits": 1.0},
+    {"id": 4, "name": "English", "marks": 86.0, "max_marks": 100.0, "credits": 1.0},
     {"id": 5, "name": "Computer Science", "marks": 95.0, "max_marks": 100.0, "credits": 1.0},
+    {"id": 6, "name": "Art & Design", "marks": 90.0, "max_marks": 100.0, "credits": 1.0},
 ]
 
 
@@ -732,8 +737,16 @@ def _login_as(account: UserAccount) -> None:
     st.session_state.current_user = account
     if account.role == ROLE_STUDENT and account.student_id in st.session_state.roster:
         if account.username in DEMO_STUDENT_USERNAMES:
+            rec_electives = st.session_state.roster[account.student_id].get(
+                "electives", list(account.electives)
+            )
+            e_pair = (
+                (str(rec_electives[0]), str(rec_electives[1]))
+                if isinstance(rec_electives, (list, tuple)) and len(rec_electives) >= 2
+                else account.electives
+            )
             st.session_state.roster[account.student_id]["subjects"] = (
-                generate_random_demo_assignments(5)
+                generate_random_demo_assignments(6, e_pair)
             )
         _load_student_from_roster(account.student_id)
     else:
@@ -1195,6 +1208,22 @@ def _render_login_portal() -> None:
                 placeholder="e.g., Westview Academy of Arts & Sciences",
                 key="reg_school_name_input",
             )
+            st.caption("📚 **Core Subjects Included:** History, Science, Math, English")
+            ecol1, ecol2 = st.columns(2)
+            with ecol1:
+                reg_elective_1 = st.selectbox(
+                    "Choose 1st Elective",
+                    options=list(ELECTIVE_OPTIONS),
+                    index=0,
+                    key="reg_elective_1_select",
+                )
+            with ecol2:
+                reg_elective_2 = st.selectbox(
+                    "Choose 2nd Elective",
+                    options=list(ELECTIVE_OPTIONS),
+                    index=1,
+                    key="reg_elective_2_select",
+                )
             reg_password = st.text_input(
                 "Create Password (min. 6 characters)",
                 type="password",
@@ -1211,6 +1240,7 @@ def _render_login_portal() -> None:
                     student_id=reg_student_id,
                     grade_level=reg_grade_level,
                     school_name=reg_school_name,
+                    electives=(reg_elective_1, reg_elective_2),
                 )
                 if err_msg:
                     st.error(err_msg)
@@ -1222,9 +1252,10 @@ def _render_login_portal() -> None:
                             "grade_level": new_user.grade_level,
                             "school_name": new_user.school_name,
                             "username": new_user.username,
+                            "electives": [reg_elective_1, reg_elective_2],
                             "is_demo": False,
                             "custom_remarks": "",
-                            "subjects": [],
+                            "subjects": build_empty_student_subjects(reg_elective_1, reg_elective_2),
                         }
                     _login_as(new_user)
                     st.rerun()
@@ -1526,6 +1557,75 @@ def main() -> None:
         )
 
         with _card_container():
+            # Student Electives Selection (Core: History, Science, Math, English + 2 Student-Chosen Electives)
+            target_sid = (
+                current_user.student_id
+                if current_user.role == ROLE_STUDENT
+                else st.session_state.active_student_id
+            )
+            student_rec = st.session_state.roster.get(target_sid, {})
+            saved_electives = student_rec.get("electives", ["Computer Science", "Art & Design"])
+            cur_e1 = (
+                str(saved_electives[0])
+                if isinstance(saved_electives, (list, tuple)) and len(saved_electives) >= 1
+                else "Computer Science"
+            )
+            cur_e2 = (
+                str(saved_electives[1])
+                if isinstance(saved_electives, (list, tuple)) and len(saved_electives) >= 2
+                else "Art & Design"
+            )
+            st.markdown(
+                f"<div class='demo-creds-box' style='margin-top:0;margin-bottom:14px;'>"
+                f"📚 <strong>Required Core Subjects (4):</strong> "
+                f"<span class='Demo-code'>History</span> &bull; "
+                f"<span class='Demo-code'>Science</span> &bull; "
+                f"<span class='Demo-code'>Math</span> &bull; "
+                f"<span class='Demo-code'>English</span>"
+                f" &nbsp;|&nbsp; 🎨 <strong>Chosen Electives (2):</strong> "
+                f"<strong>{html.escape(cur_e1)}</strong> &amp; <strong>{html.escape(cur_e2)}</strong>"
+                f"</div>",
+                unsafe_allow_html=True,
+            )
+            el_col1, el_col2, el_col3 = st.columns([2.2, 2.2, 1.6])
+            e1_idx = list(ELECTIVE_OPTIONS).index(cur_e1) if cur_e1 in ELECTIVE_OPTIONS else 0
+            e2_idx = list(ELECTIVE_OPTIONS).index(cur_e2) if cur_e2 in ELECTIVE_OPTIONS else 1
+            with el_col1:
+                picked_e1 = st.selectbox(
+                    "Choose 1st Elective Subject",
+                    options=list(ELECTIVE_OPTIONS),
+                    index=e1_idx,
+                    key="portal_elective_1",
+                )
+            with el_col2:
+                picked_e2 = st.selectbox(
+                    "Choose 2nd Elective Subject",
+                    options=list(ELECTIVE_OPTIONS),
+                    index=e2_idx,
+                    key="portal_elective_2",
+                )
+            with el_col3:
+                st.write("")
+                if st.button("✅ Save 2 Electives", use_container_width=True):
+                    desired_names = get_student_subject_names(picked_e1, picked_e2)
+                    if target_sid in st.session_state.roster:
+                        st.session_state.roster[target_sid]["electives"] = [picked_e1, picked_e2]
+                    while len(st.session_state.subjects) < 6:
+                        _add_subject_row(
+                            name=desired_names[len(st.session_state.subjects)],
+                            marks=85.0,
+                            max_marks=100.0,
+                            credits=1.0,
+                        )
+                    for idx_s, s_name in enumerate(desired_names):
+                        if idx_s < len(st.session_state.subjects):
+                            st.session_state.subjects[idx_s]["name"] = s_name
+                    if target_sid in st.session_state.roster:
+                        st.session_state.roster[target_sid]["subjects"] = [
+                            dict(r) for r in st.session_state.subjects
+                        ]
+                    st.rerun()
+
             if not st.session_state.subjects and not can_edit_grades:
                 st.warning(
                     "📋 No assignments or test results have been entered by your teacher yet. "
@@ -1542,7 +1642,20 @@ def main() -> None:
                         and lowest_row is not None
                         and int(lowest_row["id"]) == rid
                     )
-                    score_val = float(row["marks"])
+                    sub_assigns = row.get("assignments")
+                    if isinstance(sub_assigns, list) and sub_assigns:
+                        score_val = round(
+                            sum(float(a["score"]) for a in sub_assigns) / len(sub_assigns),
+                            2,
+                        )
+                        row["marks"] = score_val
+                        assign_summary = ", ".join(
+                            f"{html.escape(str(a.get('title', 'Assignment')))}: {float(a['score']):g}/100"
+                            for a in sub_assigns
+                        )
+                    else:
+                        score_val = float(row["marks"])
+                        assign_summary = f"Course Score: {score_val:g}/100"
                     pct_val = round((score_val / 100.0) * 100.0, 2)
                     letter, _ = get_letter_grade_and_gpa(
                         pct_val, passing_percentage=float(passing_percentage), scale=scale
@@ -1558,7 +1671,8 @@ def main() -> None:
                         status_html = f"<span class='{p_cls}'>{p_lbl}</span>"
                     ro_rows.append(
                         f"<tr>"
-                        f"<td><strong>{html.escape(str(row['name']))}</strong></td>"
+                        f"<td><strong>{html.escape(str(row['name']))}</strong><br>"
+                        f"<span style='font-size:0.78rem;color:#64748b;'>{assign_summary}</span></td>"
                         f"<td class='rc-num'><strong>{score_val:g} / 100</strong></td>"
                         f"<td class='rc-num'>{pct_val:.1f}%</td>"
                         f"<td class='rc-center'><span class='grade-badge' style='background:{g_bg};color:{g_fg};'>{html.escape(letter)}</span></td>"
@@ -1572,15 +1686,15 @@ def main() -> None:
                 st.markdown(
                     "<table class='rc-table'>"
                     "<thead><tr>"
-                    "<th>Assignment / Test Name</th>"
-                    "<th class='rc-num'>Score (Over 100)</th>"
-                    "<th class='rc-num'>Assignment %</th>"
+                    "<th>Subject &amp; Assignments</th>"
+                    "<th class='rc-num'>Averaged Score (/ 100)</th>"
+                    "<th class='rc-num'>Subject %</th>"
                     "<th class='rc-center'>Letter Grade</th>"
                     "<th class='rc-center'>Status</th>"
                     "</tr></thead>"
                     f"<tbody>{''.join(ro_rows)}</tbody>"
                     "<tfoot><tr>"
-                    f"<td>Final Averaged Grade ({len(active_for_avg)} Assignments)</td>"
+                    f"<td>Final Averaged Grade ({len(active_for_avg)} Subjects)</td>"
                     f"<td class='rc-num'>{avg_pct:g} / 100</td>"
                     f"<td class='rc-num'>{avg_pct:.2f}%</td>"
                     f"<td class='rc-center'>{html.escape(avg_letter)}</td>"
@@ -1590,35 +1704,61 @@ def main() -> None:
                     unsafe_allow_html=True,
                 )
             else:
-                # Teacher-Only Assignment Editor (each assignment scored out of 100 and averaged out)
-                with st.expander("📂 Bulk Import Assignments from CSV"):
-                    st.caption("Upload a CSV with columns `Subject` (or `Assignment`) and `Marks` (score out of 100).")
-                    uploaded_file = st.file_uploader("Choose CSV file", type=["csv"])
-                    if uploaded_file is not None:
-                        try:
-                            content = uploaded_file.getvalue().decode("utf-8-sig")
-                            imported_rows = _parse_uploaded_csv(content)
-                            if imported_rows:
-                                if st.button("Load Uploaded Assignments", type="secondary"):
-                                    for r in imported_rows:
-                                        r["max_marks"] = 100.0
-                                        r["credits"] = 1.0
-                                    st.session_state.subjects = imported_rows
-                                    st.session_state.next_id = max(r["id"] for r in imported_rows) + 1
-                                    if st.session_state.active_student_id in st.session_state.roster:
-                                        st.session_state.roster[st.session_state.active_student_id]["subjects"] = [
-                                            dict(r) for r in st.session_state.subjects
-                                        ]
-                                    st.rerun()
-                            else:
-                                st.warning("No valid assignment rows found in the uploaded CSV.")
-                        except Exception as exc:  # noqa: BLE001
-                            st.error(f"Could not parse CSV file: {exc}")
+                # Teacher-Only Assignment Editor: Add assignments (/100) to any of the student's 6 subjects
+                subject_names_list = [str(r["name"]) for r in st.session_state.subjects]
+                st.markdown("**➕ Add Assignment to Student's Subject (Scored Over 100)**")
+                add_c1, add_c2, add_c3, add_c4 = st.columns([2.2, 2.8, 1.8, 1.5])
+                with add_c1:
+                    target_subj_name = st.selectbox(
+                        "Subject",
+                        options=subject_names_list or list(CORE_SUBJECTS),
+                        key="teacher_add_assign_subj",
+                    )
+                with add_c2:
+                    new_assign_title = st.text_input(
+                        "Assignment Title",
+                        value="Unit Test",
+                        key="teacher_add_assign_title",
+                    )
+                with add_c3:
+                    new_assign_score = st.number_input(
+                        "Score (/ 100 %)",
+                        min_value=0.0,
+                        max_value=100.0,
+                        value=88.0,
+                        step=1.0,
+                        key="teacher_add_assign_score",
+                    )
+                with add_c4:
+                    st.write("")
+                    if st.button("➕ Add Assignment", use_container_width=True):
+                        for r in st.session_state.subjects:
+                            if str(r["name"]) == target_subj_name:
+                                assigns = list(r.get("assignments") or [])  # type: ignore[arg-type]
+                                assigns.append(
+                                    {
+                                        "id": len(assigns) + 1,
+                                        "title": f"{target_subj_name} — {new_assign_title.strip() or 'Assignment'}",
+                                        "score": float(new_assign_score),
+                                    }
+                                )
+                                r["assignments"] = assigns
+                                r["marks"] = round(
+                                    sum(float(a["score"]) for a in assigns) / len(assigns),
+                                    2,
+                                )
+                                break
+                        if st.session_state.active_student_id in st.session_state.roster:
+                            st.session_state.roster[st.session_state.active_student_id]["subjects"] = [
+                                dict(r) for r in st.session_state.subjects
+                            ]
+                        st.rerun()
 
+                st.divider()
                 hdr1, hdr2, hdr3, hdr4 = st.columns([4.2, 2.2, 1.8, 0.8])
-                hdr1.markdown("**Assignment / Test Name**")
-                hdr2.markdown("**Score (/ 100 %)**")
-                hdr3.markdown("**Assignment Grade**")
+                hdr1.markdown("**Subject (4 Core + 2 Electives)**")
+                hdr2.markdown("**Averaged Score (/ 100 %)**")
+                hdr3.markdown("**Subject Grade**")
                 hdr4.markdown("**Del**")
 
                 for row in list(st.session_state.subjects):
@@ -1628,12 +1768,20 @@ def main() -> None:
                     c1, c2, c3, c4 = st.columns([4.2, 2.2, 1.8, 0.8])
                     with c1:
                         row["name"] = st.text_input(
-                            f"Assignment Name {rid}",
+                            f"Subject Name {rid}",
                             value=str(row["name"]),
-                            placeholder="e.g., Algebra Unit Test #1",
                             key=f"subj_name_{rid}",
                             label_visibility="collapsed",
                         )
+                        sub_assigns = row.get("assignments")
+                        if isinstance(sub_assigns, list) and sub_assigns:
+                            st.caption(
+                                "Assignments: "
+                                + " | ".join(
+                                    f"{a.get('title', 'Task')}: **{float(a['score']):g}/100**"
+                                    for a in sub_assigns
+                                )
+                            )
                     with c2:
                         row["marks"] = st.number_input(
                             f"Score over 100 {rid}",
@@ -1658,7 +1806,7 @@ def main() -> None:
                         if st.button(
                             "✕",
                             key=f"subj_del_{rid}",
-                            help="Remove this assignment",
+                            help="Remove this subject",
                             disabled=len(st.session_state.subjects) <= 1,
                         ):
                             _remove_subject_row(rid)
@@ -1675,26 +1823,13 @@ def main() -> None:
                     ]
 
                 st.write("")
-                btn_col1, btn_col2, btn_col3, _ = st.columns([2.2, 1.8, 2.0, 3.0])
+                btn_col1, btn_col2, _ = st.columns([2.2, 2.2, 4.6])
                 with btn_col1:
-                    if st.button("➕ Add Assignment", use_container_width=True):
-                        _add_subject_row(
-                            name=f"Assignment {len(st.session_state.subjects) + 1}",
-                            marks=85.0,
-                            max_marks=100.0,
-                            credits=1.0,
-                        )
-                        if st.session_state.active_student_id in st.session_state.roster:
-                            st.session_state.roster[st.session_state.active_student_id]["subjects"] = [
-                                dict(r) for r in st.session_state.subjects
-                            ]
-                        st.rerun()
-                with btn_col2:
                     if st.button("🧹 Clear Scores", use_container_width=True):
                         _clear_all_marks()
                         st.rerun()
-                with btn_col3:
-                    if st.button("🔄 Reset Sample Assignments", use_container_width=True):
+                with btn_col2:
+                    if st.button("🔄 Reset 6 Subjects", use_container_width=True):
                         _reset_sample_subjects()
                         st.rerun()
                 st.write("")
@@ -1705,7 +1840,7 @@ def main() -> None:
                     "🎲 Generate New Random Demo Assignments & Test Results",
                     use_container_width=True,
                 ):
-                    new_demo_rows = generate_random_demo_assignments(5)
+                    new_demo_rows = generate_random_demo_assignments(6, (cur_e1, cur_e2))
                     st.session_state.roster[current_user.student_id]["subjects"] = new_demo_rows
                     st.session_state.subjects = [dict(r) for r in new_demo_rows]
                     st.session_state.drop_lowest_grade = False
