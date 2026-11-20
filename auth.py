@@ -64,13 +64,13 @@ def build_empty_student_subjects(
     elective_1: str = "Computer Science",
     elective_2: str = "Art & Design",
 ) -> list[dict[str, object]]:
-    """Build the 6 subject rows (History, Science, Math, English + 2 Electives) with empty assignments."""
+    """Build the 6 subject rows (History, Science, Math, English + 2 Electives) starting at 100."""
     subject_names = get_student_subject_names(elective_1, elective_2)
     return [
         {
             "id": idx,
             "name": subj_name,
-            "marks": 0.0,
+            "marks": 100.0,
             "max_marks": 100.0,
             "credits": 1.0,
             "assignments": [],
@@ -233,6 +233,27 @@ def get_default_users() -> dict[str, UserAccount]:
             student_id="10020261",
             grade_level="Senior Faculty",
             fixed_salt="11223344556677889900aabbccddeeff",
+            teaching_subject="Math",
+        ),
+        _make_user(
+            username="mr_kim",
+            password="teacher123",
+            full_name="Mr. David Kim",
+            role=ROLE_TEACHER,
+            student_id="10020262",
+            grade_level="Faculty",
+            fixed_salt="22334455667788990011aabbccddeeff",
+            teaching_subject="Science",
+        ),
+        _make_user(
+            username="ms_elena",
+            password="teacher123",
+            full_name="Ms. Elena Rostova",
+            role=ROLE_TEACHER,
+            student_id="10020263",
+            grade_level="Faculty",
+            fixed_salt="33445566778899001122aabbccddeeff",
+            teaching_subject="English",
         ),
         _make_user(
             username="admin",

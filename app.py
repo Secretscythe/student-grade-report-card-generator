@@ -293,12 +293,12 @@ CUSTOM_CSS = """
 """
 
 DEFAULT_SUBJECTS: list[dict[str, object]] = [
-    {"id": 1, "name": "History", "marks": 84.0, "max_marks": 100.0, "credits": 1.0},
-    {"id": 2, "name": "Science", "marks": 88.0, "max_marks": 100.0, "credits": 1.0},
-    {"id": 3, "name": "Math", "marks": 92.0, "max_marks": 100.0, "credits": 1.0},
-    {"id": 4, "name": "English", "marks": 86.0, "max_marks": 100.0, "credits": 1.0},
-    {"id": 5, "name": "Computer Science", "marks": 95.0, "max_marks": 100.0, "credits": 1.0},
-    {"id": 6, "name": "Art & Design", "marks": 90.0, "max_marks": 100.0, "credits": 1.0},
+    {"id": 1, "name": "History", "marks": 100.0, "max_marks": 100.0, "credits": 1.0},
+    {"id": 2, "name": "Science", "marks": 100.0, "max_marks": 100.0, "credits": 1.0},
+    {"id": 3, "name": "Math", "marks": 100.0, "max_marks": 100.0, "credits": 1.0},
+    {"id": 4, "name": "English", "marks": 100.0, "max_marks": 100.0, "credits": 1.0},
+    {"id": 5, "name": "Computer Science", "marks": 100.0, "max_marks": 100.0, "credits": 1.0},
+    {"id": 6, "name": "Art & Design", "marks": 100.0, "max_marks": 100.0, "credits": 1.0},
 ]
 
 
@@ -392,7 +392,7 @@ def _logout_user() -> None:
 
 def _add_subject_row(
     name: str = "",
-    marks: float = 0.0,
+    marks: float = 100.0,
     max_marks: float = 100.0,
     credits: float = 1.0,
 ) -> None:
@@ -490,6 +490,73 @@ def _render_sidebar_scale_html(scale: str, passing_percentage: int) -> str:
         "<table class='scale-table'>"
         "<thead><tr><th>Grade</th><th>Score Range</th><th style='text-align:right;'>GPA</th></tr></thead>"
         f"<tbody>{''.join(rows)}</tbody>"
+        "</table>"
+    )
+
+
+def _render_teacher_progress_html(
+    users: dict[str, UserAccount],
+    roster: dict[str, dict[str, object]],
+) -> str:
+    """Render a clean table showing each Teacher's grading progress for the Administrator."""
+    teachers = [u for u in users.values() if u.role == ROLE_TEACHER]
+    if not teachers:
+        return "<div class='info-strip'>No teacher accounts registered yet.</div>"
+
+    rows_html = []
+    for t in teachers:
+        t_school = t.school_name.strip().lower()
+        t_subj = t.teaching_subject.strip().lower()
+        enrolled = 0
+        graded = 0
+        total_assigns = 0
+        scores: list[float] = []
+
+        for srec in roster.values():
+            s_school = str(srec.get("school_name", DEFAULT_SCHOOL)).strip().lower()
+            if s_school != t_school:
+                continue
+            for subj_row in srec.get("subjects", []):  # type: ignore[union-attr]
+                if str(subj_row.get("name", "")).strip().lower() == t_subj:
+                    enrolled += 1
+                    assigns = subj_row.get("assignments")
+                    a_count = len(assigns) if isinstance(assigns, list) else 0
+                    total_assigns += a_count
+                    mark_val = float(subj_row.get("marks", 0.0))
+                    if a_count > 0 or mark_val > 0:
+                        graded += 1
+                        scores.append(mark_val)
+                    break
+
+        avg_str = f"{sum(scores) / len(scores):.1f}%" if scores else "N/A"
+        complete = enrolled > 0 and graded >= enrolled
+        badge_cls = "pill-pass" if complete else "honor-pill"
+        badge_lbl = "Complete" if complete else "In Progress"
+
+        rows_html.append(
+            f"<tr>"
+            f"<td><strong>{html.escape(t.full_name)}</strong> <span style='color:#64748b;'>(@{html.escape(t.username)})</span></td>"
+            f"<td><strong>{html.escape(t.teaching_subject)}</strong></td>"
+            f"<td>{html.escape(t.school_name)}</td>"
+            f"<td class='rc-center'><strong>{graded} / {enrolled}</strong></td>"
+            f"<td class='rc-num'>{total_assigns}</td>"
+            f"<td class='rc-num'><strong>{avg_str}</strong></td>"
+            f"<td class='rc-center'><span class='{badge_cls}'>{badge_lbl}</span></td>"
+            f"</tr>"
+        )
+
+    return (
+        "<table class='rc-table'>"
+        "<thead><tr>"
+        "<th>Teacher</th>"
+        "<th>Subject</th>"
+        "<th>School</th>"
+        "<th class='rc-center'>Students Graded</th>"
+        "<th class='rc-num'>Assignments Posted</th>"
+        "<th class='rc-num'>Class Avg</th>"
+        "<th class='rc-center'>Progress</th>"
+        "</tr></thead>"
+        f"<tbody>{''.join(rows_html)}</tbody>"
         "</table>"
     )
 
@@ -840,29 +907,31 @@ def _render_login_portal() -> None:
                     key="reg_email_input",
                 )
             with rcol6:
-                reg_grade_level = st.text_input(
-                    "Grade Level",
-                    value="Grade 11" if reg_role == ROLE_STUDENT else "Faculty",
-                    key="reg_grade_level_input",
+                reg_school_name = st.text_input(
+                    "School Name",
+                    value=DEFAULT_SCHOOL,
+                    key="reg_school_name_input",
                 )
-            reg_school_name = st.text_input(
-                "School Name",
-                value=DEFAULT_SCHOOL,
-                key="reg_school_name_input",
-            )
 
+            reg_grade_level = "Faculty" if reg_role == ROLE_TEACHER else "Administrator"
             reg_elective_1 = ELECTIVE_OPTIONS[0]
             reg_elective_2 = ELECTIVE_OPTIONS[1]
             reg_teaching_subject = "Math"
 
             if reg_role == ROLE_TEACHER:
+                st.caption("👩‍🏫 Select the single subject you teach and grade:")
                 reg_teaching_subject = st.selectbox(
-                    "Subject You Teach",
+                    "Which Subject Do You Teach?",
                     options=list(ALL_SUBJECT_OPTIONS),
                     index=2,
                     key="reg_teaching_subject_select",
                 )
             elif reg_role == ROLE_STUDENT:
+                reg_grade_level = st.text_input(
+                    "Grade Level",
+                    value="Grade 11",
+                    key="reg_grade_level_input",
+                )
                 st.caption("Core Subjects: History, Science, Math, English (8-digit ID assigned automatically)")
                 ecol1, ecol2 = st.columns(2)
                 with ecol1:
@@ -1053,34 +1122,29 @@ def main() -> None:
                     st.rerun()
 
         if is_admin:
-            with st.expander("🛡️ Administrator Settings & Master CSV"):
-                policy["passing_percentage"] = st.slider(
-                    "Minimum Passing Percentage (%)",
-                    min_value=35,
-                    max_value=80,
-                    value=passing_percentage,
+            with _card_container():
+                st.markdown("**🛡️ Administrator — Teacher Grading Progress**")
+                st.markdown(
+                    _render_teacher_progress_html(
+                        st.session_state.users,
+                        st.session_state.roster,
+                    ),
+                    unsafe_allow_html=True,
                 )
-                passing_percentage = int(policy["passing_percentage"])
-                policy["grade_curve_bonus"] = st.slider(
-                    "School-Wide Curve Bonus (+%)",
-                    min_value=0.0,
-                    max_value=10.0,
-                    value=float(policy.get("grade_curve_bonus", 0.0)),
-                    step=0.5,
-                )
-                del_target = st.selectbox(
-                    "Remove User Account",
-                    options=[u for u in st.session_state.users if u != current_user.username],
-                    key="admin_del_user_select",
-                )
-                if st.button("🗑️ Delete Account", use_container_width=True):
-                    ok, msg = delete_user_account(
-                        st.session_state.users, del_target, current_user.username
+                with st.expander("👥 Manage User Accounts"):
+                    del_target = st.selectbox(
+                        "Remove User Account",
+                        options=[u for u in st.session_state.users if u != current_user.username],
+                        key="admin_del_user_select",
                     )
-                    if ok:
-                        st.rerun()
-                    else:
-                        st.error(msg)
+                    if st.button("🗑️ Delete Account", use_container_width=True):
+                        ok, msg = delete_user_account(
+                            st.session_state.users, del_target, current_user.username
+                        )
+                        if ok:
+                            st.rerun()
+                        else:
+                            st.error(msg)
 
     # Identify lowest-percentage subject for "Remove Lowest Grade"
     lowest_row = None
@@ -1172,39 +1236,6 @@ def main() -> None:
                 ),
                 unsafe_allow_html=True,
             )
-
-            with st.expander("🎨 Change 2 Elective Subjects"):
-                el_col1, el_col2, el_col3 = st.columns([2.0, 2.0, 1.4])
-                e1_idx = list(ELECTIVE_OPTIONS).index(cur_e1) if cur_e1 in ELECTIVE_OPTIONS else 0
-                e2_idx = list(ELECTIVE_OPTIONS).index(cur_e2) if cur_e2 in ELECTIVE_OPTIONS else 1
-                with el_col1:
-                    picked_e1 = st.selectbox(
-                        "1st Elective",
-                        options=list(ELECTIVE_OPTIONS),
-                        index=e1_idx,
-                        key="portal_elective_1",
-                    )
-                with el_col2:
-                    picked_e2 = st.selectbox(
-                        "2nd Elective",
-                        options=list(ELECTIVE_OPTIONS),
-                        index=e2_idx,
-                        key="portal_elective_2",
-                    )
-                with el_col3:
-                    st.write("")
-                    if st.button("✅ Save Electives", use_container_width=True):
-                        desired_names = get_student_subject_names(picked_e1, picked_e2)
-                        if target_sid in st.session_state.roster:
-                            st.session_state.roster[target_sid]["electives"] = [picked_e1, picked_e2]
-                        for idx_s, s_name in enumerate(desired_names):
-                            if idx_s < len(st.session_state.subjects):
-                                st.session_state.subjects[idx_s]["name"] = s_name
-                        if target_sid in st.session_state.roster:
-                            st.session_state.roster[target_sid]["subjects"] = [
-                                dict(r) for r in st.session_state.subjects
-                            ]
-                        st.rerun()
 
             if lowest_row is not None:
                 low_pct = (float(lowest_row["marks"]) / max(float(lowest_row["max_marks"]), 1.0)) * 100.0
