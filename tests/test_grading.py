@@ -166,20 +166,21 @@ class TestGradingCalculations(unittest.TestCase):
         self.assertIsNone(authenticate_user(users, "alex", "wrongpass"))
         self.assertIsNone(authenticate_user(users, "unknown", "student123"))
 
-        # Register a new account with a custom school
+        # Register a new account with a custom school and auto-assigned 8-digit ID
         new_user, err = register_user(
             users,
             username="jordan",
             password="securepassword",
             full_name="Jordan Taylor",
             role=ROLE_STUDENT,
-            student_id="STU-2026-400",
             grade_level="Grade 10",
             school_name="Oakridge International High School",
         )
         self.assertIsNone(err)
         self.assertIsNotNone(new_user)
         assert new_user is not None
+        self.assertEqual(len(new_user.student_id), 8)
+        self.assertTrue(new_user.student_id.isdigit())
         self.assertEqual(new_user.school_name, "Oakridge International High School")
         self.assertIsNotNone(authenticate_user(users, "jordan", "securepassword"))
 

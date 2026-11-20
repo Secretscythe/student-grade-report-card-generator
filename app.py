@@ -6,14 +6,15 @@ import csv
 import hmac
 import html
 import io
-import os
 from contextlib import nullcontext
+from dataclasses import replace
 from datetime import date
 from typing import Any
 
 import streamlit as st
 
 from auth import (
+    ALL_SUBJECT_OPTIONS,
     CORE_SUBJECTS,
     DEFAULT_SCHOOL,
     DEMO_STUDENT_USERNAMES,
@@ -63,124 +64,117 @@ CUSTOM_CSS = """
 
   html, body, [class*="css"] {
     font-family: 'Inter', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    color: #0f172a;
   }
 
   .block-container {
-    max-width: 1180px !important;
-    padding-top: 2rem !important;
-    padding-bottom: 4rem !important;
+    max-width: 1080px !important;
+    padding-top: 1.75rem !important;
+    padding-bottom: 3.5rem !important;
   }
 
-  /* Hero Header Banner */
+  /* Clean Compact Top Banner */
   .hero-banner {
-    background: linear-gradient(135deg, #0f172a 0%, #1e3a8a 55%, #312e81 100%);
-    border-radius: 20px;
-    padding: 32px 36px;
+    background: linear-gradient(135deg, #0f172a 0%, #1e3a8a 60%, #2563eb 100%);
+    border-radius: 16px;
+    padding: 24px 30px;
     color: #ffffff;
-    box-shadow: 0 20px 40px -15px rgba(15, 23, 42, 0.25);
-    margin-bottom: 28px;
-    position: relative;
-    overflow: hidden;
-    border: 1px solid rgba(255, 255, 255, 0.12);
-  }
-  .hero-top {
-    display: flex;
-    justify-content: space-between;
-    align-items: flex-start;
-    gap: 20px;
-    flex-wrap: wrap;
+    box-shadow: 0 12px 28px -10px rgba(15, 23, 42, 0.22);
+    margin-bottom: 20px;
   }
   .hero-badge {
-    display: inline-flex;
-    align-items: center;
-    gap: 6px;
-    background: rgba(255, 255, 255, 0.14);
-    border: 1px solid rgba(255, 255, 255, 0.22);
+    display: inline-block;
+    background: rgba(255, 255, 255, 0.16);
     color: #e0e7ff;
-    font-size: 0.76rem;
+    font-size: 0.75rem;
     font-weight: 700;
     text-transform: uppercase;
-    letter-spacing: 0.08em;
-    padding: 5px 13px;
+    letter-spacing: 0.06em;
+    padding: 4px 12px;
     border-radius: 999px;
-    margin-bottom: 12px;
+    margin-bottom: 8px;
   }
   .main-title {
     font-family: 'Plus Jakarta Sans', sans-serif;
-    font-size: 2.15rem;
+    font-size: 1.85rem;
     font-weight: 800;
     color: #ffffff;
-    letter-spacing: -0.025em;
-    margin: 0 0 8px 0;
-    line-height: 1.2;
+    margin: 0 0 4px 0;
+    line-height: 1.25;
   }
   .sub-title {
-    font-size: 1rem;
-    color: #cbd5e1;
-    max-width: 680px;
-    line-height: 1.55;
+    font-size: 0.95rem;
+    color: #e2e8f0;
     margin: 0;
+    line-height: 1.5;
   }
   .hero-pills {
     display: flex;
     flex-wrap: wrap;
-    gap: 10px;
-    margin-top: 20px;
-    padding-top: 18px;
-    border-top: 1px solid rgba(255, 255, 255, 0.14);
+    gap: 8px;
+    margin-top: 14px;
   }
   .hero-pill {
-    background: rgba(15, 23, 42, 0.45);
-    border: 1px solid rgba(255, 255, 255, 0.16);
+    background: rgba(15, 23, 42, 0.35);
+    border: 1px solid rgba(255, 255, 255, 0.18);
     color: #f8fafc;
-    border-radius: 10px;
-    padding: 7px 14px;
+    border-radius: 8px;
+    padding: 5px 12px;
     font-size: 0.82rem;
     font-weight: 600;
-    display: inline-flex;
-    align-items: center;
-    gap: 6px;
   }
   .hero-pill span {
     color: #93c5fd;
     font-weight: 700;
   }
 
-  /* Login & User Profile Cards */
-  .auth-card-title {
+  /* Card Containers */
+  [data-testid="stVerticalBlockBorderWrapper"] {
+    background: #ffffff;
+    border-radius: 14px !important;
+    border: 1px solid #cbd5e1 !important;
+    box-shadow: 0 4px 14px rgba(15, 23, 42, 0.04) !important;
+    padding: 12px !important;
+  }
+
+  .card-heading {
     font-family: 'Plus Jakarta Sans', sans-serif;
-    font-size: 1.22rem;
+    font-size: 1.2rem;
     font-weight: 800;
     color: #0f172a;
     margin: 0 0 4px 0;
   }
-  .auth-card-sub {
-    font-size: 0.86rem;
-    color: #64748b;
-    margin: 0 0 16px 0;
+  .card-subheading {
+    font-size: 0.88rem;
+    color: #475569;
+    margin: 0 0 14px 0;
   }
-  .demo-creds-box {
+
+  .info-strip {
     background: #f8fafc;
-    border: 1px solid #e2e8f0;
+    border: 1px solid #cbd5e1;
     border-left: 4px solid #2563eb;
     border-radius: 10px;
-    padding: 12px 15px;
-    font-size: 0.82rem;
-    color: #334155;
-    margin-top: 12px;
-    line-height: 1.6;
+    padding: 12px 16px;
+    font-size: 0.9rem;
+    color: #1e293b;
+    margin-bottom: 14px;
+    line-height: 1.55;
   }
-  .Demo-code {
+  .code-tag {
     background: #e2e8f0;
     color: #0f172a;
-    padding: 1px 6px;
-    border-radius: 5px;
+    padding: 2px 7px;
+    border-radius: 6px;
     font-family: monospace;
     font-weight: 700;
+    font-size: 0.84rem;
   }
+
+  /* Sidebar Profile Card */
   .user-profile-box {
-    background: linear-gradient(135deg, #eff6ff 0%, #f8fafc 100%);
-    border: 1px solid #bfdbfe;
+    background: #ffffff;
+    border: 1px solid #cbd5e1;
     border-radius: 12px;
     padding: 14px 16px;
     margin-bottom: 12px;
@@ -191,163 +185,177 @@ CUSTOM_CSS = """
     align-items: center;
     justify-content: space-between;
     gap: 8px;
-    margin-bottom: 6px;
+    margin-bottom: 8px;
   }
   .user-profile-name {
     font-weight: 800;
-    font-size: 0.95rem;
+    font-size: 0.98rem;
     color: #0f172a;
   }
   .role-badge-student {
     background: #dbeafe;
     color: #1e40af;
-    font-size: 0.7rem;
+    font-size: 0.72rem;
     font-weight: 800;
     text-transform: uppercase;
-    letter-spacing: 0.05em;
-    padding: 2px 8px;
+    padding: 3px 9px;
     border-radius: 999px;
   }
   .role-badge-instructor {
     background: #ede9fe;
     color: #5b21b6;
-    font-size: 0.7rem;
+    font-size: 0.72rem;
     font-weight: 800;
     text-transform: uppercase;
-    letter-spacing: 0.05em;
-    padding: 2px 8px;
+    padding: 3px 9px;
     border-radius: 999px;
   }
   .role-badge-admin {
     background: #fef3c7;
     color: #92400e;
-    border: 1px solid #fcd34d;
-    font-size: 0.7rem;
+    font-size: 0.72rem;
     font-weight: 800;
     text-transform: uppercase;
-    letter-spacing: 0.05em;
-    padding: 2px 8px;
+    padding: 3px 9px;
     border-radius: 999px;
   }
   .user-profile-meta {
-    font-size: 0.78rem;
-    color: #475569;
-    font-weight: 500;
+    font-size: 0.84rem;
+    color: #334155;
+    line-height: 1.6;
   }
 
-  /* Section Header Cards */
-  .section-head {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    flex-wrap: wrap;
-    gap: 10px;
-    margin: 8px 0 14px 0;
+  /* Clean High-Legibility Tables */
+  .rc-table {
+    width: 100%;
+    border-collapse: separate;
+    border-spacing: 0;
+    margin: 12px 0 18px 0;
+    font-size: 0.94rem;
+    border: 1px solid #cbd5e1;
+    border-radius: 12px;
+    overflow: hidden;
+    background: #ffffff;
   }
-  .section-title-wrap {
-    display: flex;
-    align-items: center;
-    gap: 12px;
-  }
-  .step-pill {
-    background: linear-gradient(135deg, #1e3a8a, #2563eb);
+  .rc-table th {
+    background: #0f172a;
     color: #ffffff;
-    font-size: 0.72rem;
-    font-weight: 800;
-    letter-spacing: 0.08em;
+    padding: 12px 16px;
+    text-align: left;
+    font-weight: 700;
+    font-size: 0.78rem;
     text-transform: uppercase;
-    padding: 5px 11px;
-    border-radius: 8px;
+    letter-spacing: 0.05em;
   }
-  .section-title {
-    font-family: 'Plus Jakarta Sans', sans-serif;
-    font-size: 1.25rem;
+  .rc-table td {
+    padding: 13px 16px;
+    border-bottom: 1px solid #e2e8f0;
+    color: #0f172a;
+    vertical-align: middle;
+  }
+  .rc-table tbody tr:nth-child(even) {
+    background: #f8fafc;
+  }
+  .rc-table tfoot td {
+    background: #f1f5f9;
     font-weight: 800;
     color: #0f172a;
-    margin: 0;
+    border-top: 2px solid #94a3b8;
+    border-bottom: none;
+    font-size: 0.96rem;
   }
-  .section-sub {
-    font-size: 0.85rem;
-    color: #64748b;
-    font-weight: 500;
-  }
+  .rc-num { text-align: right !important; }
+  .rc-center { text-align: center !important; }
 
-  /* Bordered Container Card Styling */
-  [data-testid="stVerticalBlockBorderWrapper"] {
-    background: #ffffff;
-    border-radius: 16px !important;
-    border: 1px solid #e2e8f0 !important;
-    box-shadow: 0 4px 20px -4px rgba(15, 23, 42, 0.05) !important;
-    padding: 8px !important;
-  }
-
-  /* Live Inline Subject Preview Pill */
-  .live-preview-pill {
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    gap: 6px;
-    height: 38px;
-    padding: 0 12px;
+  .grade-badge {
+    display: inline-block;
+    min-width: 38px;
+    padding: 4px 10px;
     border-radius: 8px;
-    font-size: 0.82rem;
+    font-weight: 800;
+    font-size: 0.86rem;
+    text-align: center;
+  }
+  .pill-pass {
+    background: #dcfce7;
+    color: #166534;
+    padding: 4px 12px;
+    border-radius: 999px;
+    font-size: 0.78rem;
+    font-weight: 800;
+    display: inline-block;
+  }
+  .pill-fail {
+    background: #fee2e2;
+    color: #991b1b;
+    padding: 4px 12px;
+    border-radius: 999px;
+    font-size: 0.78rem;
+    font-weight: 800;
+    display: inline-block;
+  }
+  .honor-pill {
+    background: #f1f5f9;
+    color: #334155;
+    border: 1px solid #cbd5e1;
+    padding: 4px 12px;
+    border-radius: 999px;
+    font-size: 0.78rem;
     font-weight: 700;
-    border: 1px solid transparent;
-    white-space: nowrap;
+    display: inline-block;
   }
 
-  /* Sidebar Scale Reference Table */
+  /* Sidebar Scale Table */
   .scale-table {
     width: 100%;
     border-collapse: collapse;
-    font-size: 0.82rem;
+    font-size: 0.84rem;
     background: #ffffff;
     border-radius: 10px;
     overflow: hidden;
-    border: 1px solid #e2e8f0;
+    border: 1px solid #cbd5e1;
   }
   .scale-table th {
     background: #f1f5f9;
-    color: #475569;
-    font-size: 0.72rem;
+    color: #334155;
+    font-size: 0.74rem;
     text-transform: uppercase;
-    letter-spacing: 0.05em;
     padding: 8px 10px;
     text-align: left;
-    border-bottom: 1px solid #e2e8f0;
+    border-bottom: 1px solid #cbd5e1;
   }
   .scale-table td {
     padding: 7px 10px;
     border-bottom: 1px solid #f1f5f9;
-    color: #1e293b;
+    color: #0f172a;
     font-weight: 500;
   }
   .scale-chip {
     display: inline-block;
-    min-width: 30px;
+    min-width: 32px;
     text-align: center;
     padding: 2px 7px;
     border-radius: 6px;
     font-weight: 800;
-    font-size: 0.76rem;
+    font-size: 0.78rem;
   }
 
-  /* Official Report Card Showcase */
+  /* Report Card Box */
   .report-card-box {
     background: #ffffff;
     border: 1px solid #cbd5e1;
-    border-radius: 20px;
+    border-radius: 18px;
     overflow: hidden;
-    box-shadow: 0 20px 45px -15px rgba(15, 23, 42, 0.12);
-    margin-top: 10px;
+    box-shadow: 0 12px 32px -12px rgba(15, 23, 42, 0.12);
+    margin-top: 8px;
     color: #0f172a;
   }
   .rc-top-accent {
-    height: 8px;
+    height: 7px;
     background: linear-gradient(90deg, #1e3a8a 0%, #2563eb 50%, #4f46e5 100%);
   }
   .rc-body {
-    padding: 32px 36px;
+    padding: 28px 32px;
   }
   .rc-header {
     display: flex;
@@ -356,117 +364,74 @@ CUSTOM_CSS = """
     flex-wrap: wrap;
     gap: 16px;
     border-bottom: 2px solid #e2e8f0;
-    padding-bottom: 20px;
-    margin-bottom: 22px;
-  }
-  .rc-brand {
-    display: flex;
-    align-items: center;
-    gap: 14px;
-  }
-  .rc-crest {
-    width: 52px;
-    height: 52px;
-    border-radius: 14px;
-    background: linear-gradient(135deg, #1e3a8a, #3b82f6);
-    color: #ffffff;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    font-size: 1.65rem;
-    box-shadow: 0 8px 16px -4px rgba(37, 99, 235, 0.35);
-    flex-shrink: 0;
+    padding-bottom: 18px;
+    margin-bottom: 20px;
   }
   .rc-school {
     font-family: 'Plus Jakarta Sans', sans-serif;
-    font-size: 1.55rem;
+    font-size: 1.45rem;
     font-weight: 800;
     color: #0f172a;
     margin: 0 !important;
-    letter-spacing: -0.02em;
-    line-height: 1.25;
   }
   .rc-sub {
     font-size: 0.88rem;
-    color: #64748b;
-    margin: 3px 0 0 0 !important;
-    font-weight: 500;
-  }
-  .rc-badge-group {
-    display: flex;
-    flex-direction: column;
-    align-items: flex-end;
-    gap: 6px;
+    color: #475569;
+    margin: 4px 0 0 0 !important;
   }
   .status-banner-pass {
     background: #ecfdf5;
     color: #065f46;
     border: 1.5px solid #6ee7b7;
-    padding: 8px 20px;
+    padding: 7px 18px;
     border-radius: 999px;
     font-weight: 800;
-    font-size: 0.9rem;
-    letter-spacing: 0.04em;
+    font-size: 0.88rem;
   }
   .status-banner-fail {
     background: #fef2f2;
     color: #991b1b;
     border: 1.5px solid #fca5a5;
-    padding: 8px 20px;
+    padding: 7px 18px;
     border-radius: 999px;
     font-weight: 800;
-    font-size: 0.9rem;
-    letter-spacing: 0.04em;
-  }
-  .honor-pill {
-    background: #f1f5f9;
-    color: #334155;
-    border: 1px solid #cbd5e1;
-    padding: 4px 12px;
-    border-radius: 999px;
-    font-size: 0.76rem;
-    font-weight: 700;
+    font-size: 0.88rem;
   }
   .rc-meta {
     display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
-    gap: 14px 20px;
+    grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+    gap: 12px 18px;
     background: #f8fafc;
-    border: 1px solid #e2e8f0;
+    border: 1px solid #cbd5e1;
     border-radius: 12px;
-    padding: 16px 20px;
-    margin-bottom: 24px;
-  }
-  .rc-meta-item {
-    display: flex;
-    flex-direction: column;
-    gap: 3px;
+    padding: 14px 18px;
+    margin-bottom: 20px;
   }
   .rc-meta-label {
     font-size: 0.72rem;
     text-transform: uppercase;
-    letter-spacing: 0.06em;
-    color: #64748b;
+    letter-spacing: 0.05em;
+    color: #475569;
     font-weight: 700;
+    display: block;
   }
   .rc-meta-val {
     font-size: 0.96rem;
-    font-weight: 700;
+    font-weight: 800;
     color: #0f172a;
   }
   .kpi-grid {
     display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(195px, 1fr));
-    gap: 16px;
-    margin-bottom: 26px;
+    grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
+    gap: 14px;
+    margin-bottom: 22px;
   }
   .kpi-card {
     background: #ffffff;
-    border: 1px solid #e2e8f0;
-    border-radius: 14px;
-    padding: 18px 16px;
+    border: 1px solid #cbd5e1;
+    border-radius: 12px;
+    padding: 16px;
     text-align: center;
-    box-shadow: 0 4px 12px rgba(15, 23, 42, 0.03);
     position: relative;
     overflow: hidden;
   }
@@ -478,179 +443,62 @@ CUSTOM_CSS = """
     height: 4px;
   }
   .kpi-label {
-    font-size: 0.74rem;
+    font-size: 0.75rem;
     text-transform: uppercase;
-    letter-spacing: 0.06em;
-    color: #64748b;
+    letter-spacing: 0.05em;
+    color: #475569;
     font-weight: 700;
-    margin-bottom: 8px;
+    margin-bottom: 6px;
   }
   .kpi-value {
     font-family: 'Plus Jakarta Sans', sans-serif;
-    font-size: 1.85rem;
+    font-size: 1.75rem;
     font-weight: 800;
     color: #0f172a;
-    line-height: 1.15;
   }
   .kpi-sub {
-    font-size: 0.78rem;
-    color: #64748b;
-    margin-top: 6px;
+    font-size: 0.8rem;
+    color: #475569;
+    margin-top: 4px;
     font-weight: 600;
-  }
-  .rc-table {
-    width: 100%;
-    border-collapse: separate;
-    border-spacing: 0;
-    margin-bottom: 24px;
-    font-size: 0.92rem;
-    border: 1px solid #e2e8f0;
-    border-radius: 12px;
-    overflow: hidden;
-  }
-  .rc-table th {
-    background: #0f172a;
-    color: #f8fafc;
-    padding: 12px 15px;
-    text-align: left;
-    font-weight: 700;
-    font-size: 0.76rem;
-    text-transform: uppercase;
-    letter-spacing: 0.05em;
-    border: none;
-  }
-  .rc-table td {
-    padding: 12px 15px;
-    border-bottom: 1px solid #e2e8f0;
-    color: #1e293b;
-    vertical-align: middle;
-  }
-  .rc-table tbody tr:nth-child(even) {
-    background: #f8fafc;
-  }
-  .rc-table tbody tr:hover {
-    background: #f1f5f9;
-  }
-  .rc-table tfoot td {
-    background: #f1f5f9;
-    font-weight: 800;
-    color: #0f172a;
-    border-top: 2px solid #cbd5e1;
-    border-bottom: none;
-  }
-  .rc-num { text-align: right !important; }
-  .rc-center { text-align: center !important; }
-  .pct-bar-wrap {
-    display: flex;
-    flex-direction: column;
-    align-items: flex-end;
-    gap: 5px;
-    min-width: 120px;
-  }
-  .pct-bar-track {
-    width: 100%;
-    height: 6px;
-    background: #e2e8f0;
-    border-radius: 999px;
-    overflow: hidden;
-  }
-  .pct-bar-fill {
-    height: 100%;
-    border-radius: 999px;
-  }
-  .grade-badge {
-    display: inline-block;
-    min-width: 36px;
-    padding: 3px 10px;
-    border-radius: 8px;
-    font-weight: 800;
-    font-size: 0.84rem;
-    text-align: center;
-  }
-  .pill-pass {
-    background: #dcfce7;
-    color: #166534;
-    padding: 4px 12px;
-    border-radius: 999px;
-    font-size: 0.76rem;
-    font-weight: 800;
-    letter-spacing: 0.03em;
-    display: inline-block;
-  }
-  .pill-fail {
-    background: #fee2e2;
-    color: #991b1b;
-    padding: 4px 12px;
-    border-radius: 999px;
-    font-size: 0.76rem;
-    font-weight: 800;
-    letter-spacing: 0.03em;
-    display: inline-block;
   }
   .rc-remarks {
     border: 1px solid #bfdbfe;
     border-left: 5px solid #2563eb;
     background: #eff6ff;
-    padding: 16px 20px;
+    padding: 14px 18px;
     border-radius: 10px;
     font-size: 0.92rem;
-    line-height: 1.65;
-    color: #1e293b;
+    line-height: 1.6;
+    color: #0f172a;
   }
 
-  /* Visual Analytics Chart Card */
+  /* Subject Distribution Bars */
   .analytics-card {
     background: #ffffff;
-    border: 1px solid #e2e8f0;
-    border-radius: 16px;
-    padding: 24px 28px;
-    margin-top: 20px;
-    box-shadow: 0 4px 16px rgba(15, 23, 42, 0.04);
+    border: 1px solid #cbd5e1;
+    border-radius: 14px;
+    padding: 20px 24px;
+    margin-top: 18px;
     color: #0f172a;
-  }
-  .analytics-header {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    flex-wrap: wrap;
-    gap: 12px;
-    margin-bottom: 18px;
-    padding-bottom: 12px;
-    border-bottom: 1px solid #f1f5f9;
-  }
-  .analytics-title {
-    font-family: 'Plus Jakarta Sans', sans-serif;
-    font-size: 1.08rem;
-    font-weight: 800;
-    color: #0f172a;
-    margin: 0;
-  }
-  .analytics-legend {
-    font-size: 0.8rem;
-    color: #64748b;
-    font-weight: 600;
   }
   .chart-row {
     display: grid;
-    grid-template-columns: 180px 1fr 95px;
+    grid-template-columns: 170px 1fr 95px;
     align-items: center;
     gap: 14px;
-    margin-bottom: 12px;
+    margin-bottom: 10px;
   }
   .chart-subj {
-    font-size: 0.88rem;
+    font-size: 0.9rem;
     font-weight: 700;
-    color: #1e293b;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
+    color: #0f172a;
   }
   .chart-track {
     position: relative;
-    height: 14px;
-    background: #f1f5f9;
+    height: 12px;
+    background: #e2e8f0;
     border-radius: 999px;
-    overflow: visible;
   }
   .chart-fill {
     height: 100%;
@@ -658,21 +506,19 @@ CUSTOM_CSS = """
   }
   .chart-cutoff {
     position: absolute;
-    top: -4px;
-    bottom: -4px;
+    top: -3px;
+    bottom: -3px;
     width: 2px;
     background: #dc2626;
-    z-index: 2;
   }
   .chart-val {
     text-align: right;
-    font-size: 0.84rem;
+    font-size: 0.86rem;
     font-weight: 700;
     color: #0f172a;
   }
 </style>
 """
-
 
 DEFAULT_SUBJECTS: list[dict[str, object]] = [
     {"id": 1, "name": "History", "marks": 84.0, "max_marks": 100.0, "credits": 1.0},
@@ -702,10 +548,10 @@ def _init_state() -> None:
     if "roster" not in st.session_state:
         st.session_state.roster = get_default_student_roster()
     if "active_student_id" not in st.session_state:
-        st.session_state.active_student_id = "STU-2026-104"
+        st.session_state.active_student_id = "20260104"
     if "school_policy" not in st.session_state:
         st.session_state.school_policy = {
-            "school_name": "Westview Academy of Arts & Sciences",
+            "school_name": DEFAULT_SCHOOL,
             "term": "Fall Semester 2026",
             "passing_percentage": 60,
             "scale": SCALE_PLUS_MINUS,
@@ -785,26 +631,9 @@ def _add_subject_row(
             "marks": marks,
             "max_marks": max_marks,
             "credits": credits,
+            "assignments": [],
         }
     )
-
-
-def _remove_subject_row(row_id: int) -> None:
-    st.session_state.subjects = [
-        row for row in st.session_state.subjects if row["id"] != row_id
-    ]
-
-
-def _reset_sample_subjects() -> None:
-    st.session_state.subjects = [dict(row) for row in DEFAULT_SUBJECTS]
-    st.session_state.next_id = len(DEFAULT_SUBJECTS) + 1
-    st.session_state.show_report = True
-
-
-def _clear_all_marks() -> None:
-    for row in st.session_state.subjects:
-        row["marks"] = 0.0
-    st.session_state.show_report = False
 
 
 def _parse_uploaded_csv(file_text: str) -> list[dict[str, object]]:
@@ -849,7 +678,7 @@ def _parse_uploaded_csv(file_text: str) -> list[dict[str, object]]:
 
 
 def _render_sidebar_scale_html(scale: str, passing_percentage: int) -> str:
-    """Render a styled grade scale reference table for the sidebar."""
+    """Render a clean grade scale reference table for the sidebar."""
     if scale == SCALE_PLUS_MINUS:
         tiers = [
             ("A+", "97 – 100%", "4.0"),
@@ -902,6 +731,11 @@ def _render_user_profile_html(user: UserAccount) -> str:
     else:
         role_cls = "role-badge-student"
         icon = "🎓"
+    subj_line = (
+        f"<br>📘 Subject: <strong>{html.escape(user.teaching_subject)}</strong>"
+        if user.role == ROLE_TEACHER
+        else ""
+    )
     return (
         f"<div class='user-profile-box'>"
         f"<div class='user-profile-top'>"
@@ -909,33 +743,110 @@ def _render_user_profile_html(user: UserAccount) -> str:
         f"<span class='{role_cls}'>{html.escape(user.role)}</span>"
         f"</div>"
         f"<div class='user-profile-meta'>"
-        f"ID: <strong>{html.escape(user.student_id)}</strong> &bull; {html.escape(user.grade_level)}<br>"
+        f"🪪 ID: <strong>{html.escape(user.student_id)}</strong> &bull; {html.escape(user.grade_level)}<br>"
         f"🏫 {html.escape(user.school_name)}"
+        f"{subj_line}"
         f"</div>"
         f"</div>"
     )
 
 
-def _render_live_row_badge(
-    marks: float,
-    max_marks: float,
+def _render_subjects_table_html(
+    subjects: list[dict[str, object]],
+    *,
     passing_percentage: float,
     scale: str,
+    drop_lowest_id: int | None = None,
+    highlight_subject: str | None = None,
 ) -> str:
-    """Render a compact live grade pill for a single subject input row."""
-    if max_marks <= 0 or marks < 0 or marks > max_marks:
-        return (
-            "<div class='live-preview-pill' style='background:#fef2f2;color:#b91c1c;border-color:#fecaca;'>"
-            "⚠️ Invalid"
-            "</div>"
+    """Render a clean, legible HTML table of the student's 6 subjects and assignment averages."""
+    rows_html = []
+    active_scores: list[float] = []
+
+    for row in subjects:
+        rid = int(row["id"])
+        subj_name = str(row["name"])
+        is_dropped = drop_lowest_id is not None and rid == drop_lowest_id
+        is_teacher_subj = (
+            highlight_subject is not None
+            and subj_name.strip().lower() == highlight_subject.strip().lower()
         )
-    pct = round((marks / max_marks) * 100.0, 1)
-    letter, _ = get_letter_grade_and_gpa(pct, passing_percentage=passing_percentage, scale=scale)
-    bg, fg, _ = get_grade_tier_colors(letter)
+
+        sub_assigns = row.get("assignments")
+        if isinstance(sub_assigns, list) and sub_assigns:
+            score_val = round(
+                sum(float(a["score"]) for a in sub_assigns) / len(sub_assigns),
+                2,
+            )
+            row["marks"] = score_val
+            assign_text = " &bull; ".join(
+                f"{html.escape(str(a.get('title', 'Task')).split(' — ')[-1])}: <strong>{float(a['score']):g}/100</strong>"
+                for a in sub_assigns
+            )
+        else:
+            score_val = float(row["marks"])
+            assign_text = (
+                f"Recorded Score: <strong>{score_val:g}/100</strong>"
+                if score_val > 0
+                else "<em>No assignments graded yet</em>"
+            )
+
+        letter, _ = get_letter_grade_and_gpa(
+            score_val, passing_percentage=passing_percentage, scale=scale
+        )
+        g_bg, g_fg, _ = get_grade_tier_colors(letter)
+
+        if is_dropped:
+            status_html = "<span class='honor-pill'>Dropped (Lowest)</span>"
+        else:
+            active_scores.append(score_val)
+            passed = score_val >= passing_percentage
+            p_cls = "pill-pass" if passed else "pill-fail"
+            p_lbl = "✓ PASS" if passed else "✕ FAIL"
+            status_html = f"<span class='{p_cls}'>{p_lbl}</span>"
+
+        owner_tag = ""
+        if highlight_subject is not None:
+            owner_tag = (
+                " <span class='role-badge-instructor' style='margin-left:6px;'>Your Subject</span>"
+                if is_teacher_subj
+                else " <span style='font-size:0.75rem;color:#64748b;margin-left:6px;'>🔒 Other Teacher</span>"
+            )
+
+        row_style = " style='background:#eff6ff;'" if is_teacher_subj else ""
+        rows_html.append(
+            f"<tr{row_style}>"
+            f"<td><strong>{html.escape(subj_name)}</strong>{owner_tag}</td>"
+            f"<td style='color:#334155;font-size:0.86rem;'>{assign_text}</td>"
+            f"<td class='rc-num'><strong>{score_val:g} / 100</strong> ({score_val:.1f}%)</td>"
+            f"<td class='rc-center'><span class='grade-badge' style='background:{g_bg};color:{g_fg};'>{html.escape(letter)}</span></td>"
+            f"<td class='rc-center'>{status_html}</td>"
+            f"</tr>"
+        )
+
+    avg_pct = round(sum(active_scores) / len(active_scores), 2) if active_scores else 0.0
+    avg_letter, _ = get_letter_grade_and_gpa(
+        avg_pct, passing_percentage=passing_percentage, scale=scale
+    )
+    overall_status = "PASS" if avg_pct >= passing_percentage else "FAIL"
+
     return (
-        f"<div class='live-preview-pill' style='background:{bg};color:{fg};'>"
-        f"<span>{pct:.1f}%</span> &bull; <strong>{html.escape(letter)}</strong>"
-        f"</div>"
+        "<table class='rc-table'>"
+        "<thead><tr>"
+        "<th>Subject</th>"
+        "<th>Assignments (Score / 100)</th>"
+        "<th class='rc-num'>Subject Average</th>"
+        "<th class='rc-center'>Grade</th>"
+        "<th class='rc-center'>Status</th>"
+        "</tr></thead>"
+        f"<tbody>{''.join(rows_html)}</tbody>"
+        "<tfoot><tr>"
+        f"<td colspan='2'>Overall Final Average ({len(active_scores)} Active Subjects)</td>"
+        f"<td class='rc-num'>{avg_pct:.2f} / 100 ({avg_pct:.2f}%)</td>"
+        f"<td class='rc-center'>{html.escape(avg_letter)}</td>"
+        f"<td class='rc-center'>{overall_status}</td>"
+        "</tr></tfoot>"
+        "</table>"
     )
 
 
@@ -953,21 +864,14 @@ def _render_report_card_html(summary: ReportCardSummary, today_str: str) -> str:
     for subj in summary.subjects:
         pill_cls = "pill-pass" if subj.passed else "pill-fail"
         pill_icon = "✓" if subj.passed else "✕"
-        g_bg, g_fg, g_bar = get_grade_tier_colors(subj.letter_grade)
-        pct_clamped = min(max(subj.percentage, 0.0), 100.0)
+        g_bg, g_fg, _ = get_grade_tier_colors(subj.letter_grade)
         rows.append(
             f"<tr>"
             f"<td><strong>{html.escape(subj.name)}</strong></td>"
-            f"<td class='rc-num'>{subj.marks_obtained:g} <span style='color:#94a3b8;'>/ {subj.max_marks:g}</span></td>"
-            f"<td class='rc-num'>{subj.credits:g}</td>"
-            f"<td class='rc-num'>"
-            f"<div class='pct-bar-wrap'>"
-            f"<strong>{subj.percentage:.2f}%</strong>"
-            f"<div class='pct-bar-track'><div class='pct-bar-fill' style='width:{pct_clamped:.1f}%;background:{g_bar};'></div></div>"
-            f"</div>"
-            f"</td>"
+            f"<td class='rc-num'><strong>{subj.marks_obtained:g} / {subj.max_marks:g}</strong></td>"
+            f"<td class='rc-num'><strong>{subj.percentage:.2f}%</strong></td>"
             f"<td class='rc-center'><span class='grade-badge' style='background:{g_bg};color:{g_fg};'>{html.escape(subj.letter_grade)}</span></td>"
-            f"<td class='rc-num'><strong>{subj.gpa_points:.1f}</strong></td>"
+            f"<td class='rc-num'>{subj.gpa_points:.1f}</td>"
             f"<td class='rc-center'><span class='{pill_cls}'>{pill_icon} {html.escape(subj.status)}</span></td>"
             f"</tr>"
         )
@@ -980,30 +884,27 @@ def _render_report_card_html(summary: ReportCardSummary, today_str: str) -> str:
         f"<div class='rc-top-accent'></div>"
         f"<div class='rc-body'>"
         f"<div class='rc-header'>"
-        f"<div class='rc-brand'>"
-        f"<div class='rc-crest'>🎓</div>"
         f"<div>"
-        f"<p class='rc-school'>{html.escape(summary.school_name)}</p>"
-        f"<p class='rc-sub'>Official Academic Transcript &amp; Report Card &bull; Issued {html.escape(today_str)}</p>"
+        f"<p class='rc-school'>🎓 {html.escape(summary.school_name)}</p>"
+        f"<p class='rc-sub'>Official Student Report Card &bull; Issued {html.escape(today_str)}</p>"
         f"</div>"
-        f"</div>"
-        f"<div class='rc-badge-group'>"
-        f"<div class='{banner_cls}'>{banner_icon} STATUS: {banner_label} ({html.escape(summary.status)})</div>"
-        f"<div class='honor-pill'>🏅 {html.escape(standing_label)}</div>"
+        f"<div style='text-align:right;'>"
+        f"<span class='{banner_cls}'>{banner_icon} {banner_label} ({html.escape(summary.status)})</span> "
+        f"<span class='honor-pill'>🏅 {html.escape(standing_label)}</span>"
         f"</div>"
         f"</div>"
         f"<div class='rc-meta'>"
-        f"<div class='rc-meta-item'><span class='rc-meta-label'>Student Full Name</span><span class='rc-meta-val'>{html.escape(summary.student_name)}</span></div>"
-        f"<div class='rc-meta-item'><span class='rc-meta-label'>Student ID / Roll No.</span><span class='rc-meta-val'>{html.escape(summary.student_id)}</span></div>"
-        f"<div class='rc-meta-item'><span class='rc-meta-label'>Grade / Year Level</span><span class='rc-meta-val'>{html.escape(summary.grade_level)}</span></div>"
-        f"<div class='rc-meta-item'><span class='rc-meta-label'>Academic Term</span><span class='rc-meta-val'>{html.escape(summary.term)}</span></div>"
+        f"<div><span class='rc-meta-label'>Student Name</span><span class='rc-meta-val'>{html.escape(summary.student_name)}</span></div>"
+        f"<div><span class='rc-meta-label'>8-Digit Student ID</span><span class='rc-meta-val'>{html.escape(summary.student_id)}</span></div>"
+        f"<div><span class='rc-meta-label'>Grade Level</span><span class='rc-meta-val'>{html.escape(summary.grade_level)}</span></div>"
+        f"<div><span class='rc-meta-label'>Academic Term</span><span class='rc-meta-val'>{html.escape(summary.term)}</span></div>"
         f"</div>"
         f"<div class='kpi-grid'>"
         f"<div class='kpi-card'>"
         f"<div class='kpi-card-top' style='background:#2563eb;'></div>"
-        f"<div class='kpi-label'>Percent Grade</div>"
+        f"<div class='kpi-label'>Overall Average</div>"
         f"<div class='kpi-value'>{summary.overall_percentage:.2f}%</div>"
-        f"<div class='kpi-sub'>{summary.total_marks_obtained:g} / {summary.total_max_marks:g} Total Marks</div>"
+        f"<div class='kpi-sub'>{summary.total_marks_obtained:g} / {summary.total_max_marks:g} Total Score</div>"
         f"</div>"
         f"<div class='kpi-card' style='background:{overall_bg};'>"
         f"<div class='kpi-card-top' style='background:{overall_bar};'></div>"
@@ -1015,39 +916,33 @@ def _render_report_card_html(summary: ReportCardSummary, today_str: str) -> str:
         f"<div class='kpi-card-top' style='background:#4f46e5;'></div>"
         f"<div class='kpi-label'>Cumulative GPA</div>"
         f"<div class='kpi-value'>{summary.gpa:.2f}</div>"
-        f"<div class='kpi-sub'>4.00 Scale &bull; {summary.total_credits:g} Credits</div>"
+        f"<div class='kpi-sub'>4.00 Scale</div>"
         f"</div>"
         f"<div class='kpi-card'>"
         f"<div class='kpi-card-top' style='background:{status_bar};'></div>"
-        f"<div class='kpi-label'>Pass / Fail Status</div>"
+        f"<div class='kpi-label'>Final Standing</div>"
         f"<div class='kpi-value' style='color:{status_color};'>{html.escape(summary.status)}</div>"
-        f"<div class='kpi-sub'>{passed_count} of {total_courses} Courses Passed</div>"
+        f"<div class='kpi-sub'>{passed_count} of {total_courses} Subjects Passed</div>"
         f"</div>"
         f"</div>"
         f"<table class='rc-table'>"
-        f"<thead>"
-        f"<tr>"
-        f"<th>Subject / Course</th>"
-        f"<th class='rc-num'>Marks Obtained</th>"
-        f"<th class='rc-num'>Credits</th>"
+        f"<thead><tr>"
+        f"<th>Subject</th>"
+        f"<th class='rc-num'>Score (/ 100)</th>"
         f"<th class='rc-num'>Percent Grade</th>"
         f"<th class='rc-center'>Letter Grade</th>"
         f"<th class='rc-num'>GPA Pts</th>"
-        f"<th class='rc-center'>Standing</th>"
-        f"</tr>"
-        f"</thead>"
+        f"<th class='rc-center'>Status</th>"
+        f"</tr></thead>"
         f"<tbody>{''.join(rows)}</tbody>"
-        f"<tfoot>"
-        f"<tr>"
-        f"<td>Cumulative Total ({total_courses} Subjects)</td>"
+        f"<tfoot><tr>"
+        f"<td>Final Cumulative Summary ({total_courses} Subjects)</td>"
         f"<td class='rc-num'>{summary.total_marks_obtained:g} / {summary.total_max_marks:g}</td>"
-        f"<td class='rc-num'>{summary.total_credits:g}</td>"
         f"<td class='rc-num'>{summary.overall_percentage:.2f}%</td>"
         f"<td class='rc-center'>{html.escape(summary.overall_letter_grade)}</td>"
         f"<td class='rc-num'>{summary.gpa:.2f}</td>"
         f"<td class='rc-center'>{html.escape(summary.status)}</td>"
-        f"</tr>"
-        f"</tfoot>"
+        f"</tr></tfoot>"
         f"</table>"
         f"<div class='rc-remarks'>"
         f"<strong>Pass/Fail Determination:</strong> {html.escape(summary.status_reason)}<br>"
@@ -1059,7 +954,7 @@ def _render_report_card_html(summary: ReportCardSummary, today_str: str) -> str:
 
 
 def _render_analytics_chart_html(summary: ReportCardSummary, passing_percentage: float) -> str:
-    """Render a visual horizontal bar chart comparing subject percentages against passing cutoff."""
+    """Render a clean horizontal bar chart comparing subject scores against the passing cutoff."""
     cutoff_clamped = min(max(passing_percentage, 0.0), 100.0)
     bars_html = []
     for subj in summary.subjects:
@@ -1067,46 +962,33 @@ def _render_analytics_chart_html(summary: ReportCardSummary, passing_percentage:
         pct_clamped = min(max(subj.percentage, 0.0), 100.0)
         bars_html.append(
             f"<div class='chart-row'>"
-            f"<div class='chart-subj' title='{html.escape(subj.name)}'>{html.escape(subj.name)}</div>"
+            f"<div class='chart-subj'>{html.escape(subj.name)}</div>"
             f"<div class='chart-track'>"
-            f"<div class='chart-cutoff' style='left:{cutoff_clamped:.1f}%;' title='Passing Threshold ({passing_percentage:g}%)'></div>"
+            f"<div class='chart-cutoff' style='left:{cutoff_clamped:.1f}%;'></div>"
             f"<div class='chart-fill' style='width:{pct_clamped:.1f}%;background:{bar_color};'></div>"
             f"</div>"
             f"<div class='chart-val'>{subj.percentage:.1f}% ({html.escape(subj.letter_grade)})</div>"
             f"</div>"
         )
 
-    best_subj = max(summary.subjects, key=lambda s: s.percentage)
-    low_subj = min(summary.subjects, key=lambda s: s.percentage)
-
     return (
         f"<div class='analytics-card'>"
-        f"<div class='analytics-header'>"
-        f"<p class='analytics-title'>📊 Subject Performance Distribution</p>"
-        f"<div class='analytics-legend'>"
-        f"🔴 Passing Cutoff: <strong>{passing_percentage:g}%</strong> &nbsp;|&nbsp; "
-        f"🏆 Highest: <strong>{html.escape(best_subj.name)} ({best_subj.percentage:.1f}%)</strong> &nbsp;|&nbsp; "
-        f"📌 Lowest: <strong>{html.escape(low_subj.name)} ({low_subj.percentage:.1f}%)</strong>"
-        f"</div>"
-        f"</div>"
+        f"<p class='card-heading' style='font-size:1.05rem;margin-bottom:14px;'>"
+        f"📊 Subject Performance Comparison (Red Line = {passing_percentage:g}% Passing Cutoff)"
+        f"</p>"
         f"{''.join(bars_html)}"
         f"</div>"
     )
 
 
 def _render_login_portal() -> None:
-    """Render the 3-tier login and account registration portal."""
+    """Render a clean, legible 3-tier login and account registration portal."""
     st.markdown(
         "<div class='hero-banner'>"
-        "<div class='hero-top'>"
-        "<div>"
-        "<div class='hero-badge'>🔒 Role-Based Academic Portal</div>"
+        "<div class='hero-badge'>🔒 Academic Grading &amp; Report Card Portal</div>"
         "<h1 class='main-title'>🎓 Student Grade &amp; Report Card Generator</h1>"
         "<p class='sub-title'>Sign in as a <strong>Student</strong>, <strong>Teacher</strong>, or "
-        "<strong>Administrator</strong> to access role-specific grading tools, class rosters, "
-        "school-wide analytics, and official report cards.</p>"
-        "</div>"
-        "</div>"
+        "<strong>Administrator</strong>, or create a new account below.</p>"
         "</div>",
         unsafe_allow_html=True,
     )
@@ -1116,8 +998,8 @@ def _render_login_portal() -> None:
     with login_col:
         with _card_container():
             st.markdown(
-                "<p class='auth-card-title'>🔑 Sign In to Your Account</p>"
-                "<p class='auth-card-sub'>Choose a role or enter your username &amp; password</p>",
+                "<p class='card-heading'>🔑 Sign In</p>"
+                "<p class='card-subheading'>Enter your username and password, or use a 1-click demo login</p>",
                 unsafe_allow_html=True,
             )
             login_username = st.text_input(
@@ -1141,13 +1023,30 @@ def _render_login_portal() -> None:
                     _login_as(matched)
                     st.rerun()
                 else:
-                    st.error("Invalid username or password. Use a demo account below!")
+                    st.error("Invalid username or password. Try one of the demo buttons below!")
+
+            st.divider()
+            st.caption("⚡ **Quick Demo Logins** (Pre-loaded with random test assignments)")
+            dcol1, dcol2, dcol3 = st.columns(3)
+            with dcol1:
+                if st.button("🎓 Student Login", use_container_width=True):
+                    _login_as(st.session_state.users["alex"])
+                    st.rerun()
+            with dcol2:
+                if st.button("👩‍🏫 Teacher Login", use_container_width=True):
+                    _login_as(st.session_state.users["teacher"])
+                    st.rerun()
+            with dcol3:
+                if st.button("🛡️ Admin Login", use_container_width=True):
+                    _login_as(st.session_state.users["admin"])
+                    st.rerun()
+
+            st.caption(
+                "Demo credentials: `alex` / `student123` • `teacher` / `teacher123` • `admin` / `admin123`"
+            )
 
             # Forgot Password / Email Recovery via Resend
-            with st.expander("📧 Forgot Password? Recover via Email (Resend)"):
-                st.caption(
-                    "Enter your username and email address to receive a 6-digit password recovery code via **Resend**."
-                )
+            with st.expander("📧 Forgot Password? Send Recovery Code via Email"):
                 secret_resend_key = ""
                 try:
                     secrets_obj = getattr(st, "secrets", None)
@@ -1159,21 +1058,21 @@ def _render_login_portal() -> None:
 
                 rec_identifier = st.text_input(
                     "Username or Account Email",
-                    placeholder="e.g., alex, teacher, or your registered username",
+                    placeholder="e.g., alex or teacher",
                     key="rec_identifier_input",
                 )
                 rec_email_override = st.text_input(
-                    "Your Email Address (where the 6-digit code will be sent)",
-                    placeholder="Enter your email address (e.g., you@gmail.com)",
+                    "Email Address to Receive 6-Digit Code",
+                    placeholder="Enter your email address",
                     key="rec_email_override_input",
                 )
-                if st.button("📨 Send 6-Digit Recovery Code via Resend", use_container_width=True):
+                if st.button("📨 Send 6-Digit Recovery Code", use_container_width=True):
                     target_acct = find_user_by_username_or_email(
                         st.session_state.users,
                         rec_identifier,
                     )
                     if target_acct is None:
-                        st.error("No student or teacher account found matching that username or email.")
+                        st.error("No account found matching that username or email.")
                     else:
                         code = generate_recovery_code()
                         dest_email = rec_email_override.strip() or target_acct.email
@@ -1191,34 +1090,28 @@ def _render_login_portal() -> None:
                         )
                         if ok_sent:
                             st.markdown(
-                                f"<div class='demo-creds-box'>✅ {html.escape(send_msg)}</div>",
+                                f"<div class='info-strip'>✅ {html.escape(send_msg)}</div>",
                                 unsafe_allow_html=True,
                             )
                         else:
-                            st.warning(f"{send_msg}")
+                            st.warning(send_msg)
 
                 pending = st.session_state.recovery_pending
                 if isinstance(pending, dict) and pending.get("username"):
                     st.divider()
-                    st.markdown(
-                        f"**Verify 6-Digit Code for `{html.escape(str(pending['username']))}`**"
-                    )
                     entered_code = st.text_input(
-                        "6-Digit Recovery Code",
-                        placeholder="e.g., 482910",
+                        f"Enter 6-Digit Code for '{pending['username']}'",
+                        placeholder="6-digit code from email",
                         key="rec_verify_code_input",
                     )
                     new_reset_pwd = st.text_input(
                         "New Password (min. 6 characters)",
                         type="password",
-                        placeholder="Enter your new password",
                         key="rec_new_password_input",
                     )
                     if st.button("🔐 Verify Code & Reset Password", type="primary", use_container_width=True):
                         expected_code = str(pending.get("code", ""))
-                        if expected_code and hmac.compare_digest(
-                            entered_code.strip(), expected_code
-                        ):
+                        if expected_code and hmac.compare_digest(entered_code.strip(), expected_code):
                             ok_rst, rst_msg = reset_user_password(
                                 st.session_state.users,
                                 str(pending["username"]),
@@ -1227,115 +1120,100 @@ def _render_login_portal() -> None:
                             if ok_rst:
                                 st.session_state.recovery_pending = None
                                 st.markdown(
-                                    f"<div class='demo-creds-box'>✅ {html.escape(rst_msg)}</div>",
+                                    f"<div class='info-strip'>✅ {html.escape(rst_msg)}</div>",
                                     unsafe_allow_html=True,
                                 )
                             else:
                                 st.error(rst_msg)
                         else:
-                            st.error("Invalid 6-digit recovery code. Please check your email and try again.")
-
-            st.divider()
-            st.caption("⚡ **One-Click Demo Logins (3 Account Types)**")
-            dcol1, dcol2, dcol3 = st.columns(3)
-            with dcol1:
-                if st.button("🎓 Student Login", use_container_width=True):
-                    _login_as(st.session_state.users["alex"])
-                    st.rerun()
-            with dcol2:
-                if st.button("👩‍🏫 Teacher Login", use_container_width=True):
-                    _login_as(st.session_state.users["teacher"])
-                    st.rerun()
-            with dcol3:
-                if st.button("🛡️ Admin Login", use_container_width=True):
-                    _login_as(st.session_state.users["admin"])
-                    st.rerun()
-
-            st.markdown(
-                "<div class='demo-creds-box'>"
-                "<strong>3 Pre-configured Role Logins:</strong><br>"
-                "1️⃣ <strong>Student:</strong> <span class='Demo-code'>alex</span> / <span class='Demo-code'>student123</span> "
-                "(or <span class='Demo-code'>sam</span> / <span class='Demo-code'>priya</span>)<br>"
-                "2️⃣ <strong>Teacher:</strong> <span class='Demo-code'>teacher</span> / <span class='Demo-code'>teacher123</span> "
-                "<em>(Class roster selector, edit &amp; save student marks, custom advisor remarks)</em><br>"
-                "3️⃣ <strong>Administrator:</strong> <span class='Demo-code'>admin</span> / <span class='Demo-code'>admin123</span> "
-                "<em>(All Teacher features + School Policy &amp; Grade Curve, User Account Manager, School-Wide Analytics &amp; Master CSV Export)</em>"
-                "</div>",
-                unsafe_allow_html=True,
-            )
+                            st.error("Invalid 6-digit recovery code.")
 
     with register_col:
         with _card_container():
             st.markdown(
-                "<p class='auth-card-title'>✨ Create New Account</p>"
-                "<p class='auth-card-sub'>Register a Student, Teacher, or Administrator profile</p>",
+                "<p class='card-heading'>✨ Create New Account</p>"
+                "<p class='card-subheading'>An 8-digit Student/Staff ID is assigned automatically</p>",
                 unsafe_allow_html=True,
-            )
-            reg_full_name = st.text_input(
-                "Full Name",
-                placeholder="e.g., Jordan Taylor",
-                key="reg_full_name_input",
-            )
-            reg_email = st.text_input(
-                "Recovery Email Address",
-                placeholder="e.g., jordan@westview.edu",
-                key="reg_email_input",
             )
             rcol1, rcol2 = st.columns(2)
             with rcol1:
-                reg_username = st.text_input(
-                    "Choose Username",
-                    placeholder="e.g., jordan",
-                    key="reg_username_input",
-                )
-            with rcol2:
                 reg_role = st.selectbox(
-                    "Account Type / Role",
+                    "1. Account Role",
                     options=list(VALID_ROLES),
                     index=0,
                     key="reg_role_select",
                 )
+            with rcol2:
+                reg_full_name = st.text_input(
+                    "2. Full Name",
+                    placeholder="e.g., Jordan Taylor",
+                    key="reg_full_name_input",
+                )
+
             rcol3, rcol4 = st.columns(2)
             with rcol3:
-                reg_student_id = st.text_input(
-                    "Student / Staff ID",
-                    value="STU-2026-305",
-                    key="reg_student_id_input",
+                reg_username = st.text_input(
+                    "3. Username",
+                    placeholder="e.g., jordan",
+                    key="reg_username_input",
                 )
             with rcol4:
+                reg_password = st.text_input(
+                    "4. Password (min. 6 chars)",
+                    type="password",
+                    placeholder="At least 6 characters",
+                    key="reg_password_input",
+                )
+
+            rcol5, rcol6 = st.columns(2)
+            with rcol5:
+                reg_email = st.text_input(
+                    "5. Recovery Email",
+                    placeholder="e.g., jordan@email.com",
+                    key="reg_email_input",
+                )
+            with rcol6:
                 reg_grade_level = st.text_input(
-                    "Grade Level / Title",
-                    value="Grade 11",
+                    "6. Grade Level / Title",
+                    value="Grade 11" if reg_role == ROLE_STUDENT else "Faculty",
                     key="reg_grade_level_input",
                 )
+
             reg_school_name = st.text_input(
-                "School / Institution Name",
+                "7. School / Institution Name",
                 value=DEFAULT_SCHOOL,
-                placeholder="e.g., Westview Academy of Arts & Sciences",
                 key="reg_school_name_input",
             )
-            st.caption("📚 **Core Subjects Included:** History, Science, Math, English")
-            ecol1, ecol2 = st.columns(2)
-            with ecol1:
-                reg_elective_1 = st.selectbox(
-                    "Choose 1st Elective",
-                    options=list(ELECTIVE_OPTIONS),
-                    index=0,
-                    key="reg_elective_1_select",
+
+            reg_elective_1 = ELECTIVE_OPTIONS[0]
+            reg_elective_2 = ELECTIVE_OPTIONS[1]
+            reg_teaching_subject = "Math"
+
+            if reg_role == ROLE_TEACHER:
+                reg_teaching_subject = st.selectbox(
+                    "8. Subject You Teach (Teachers control 1 subject)",
+                    options=list(ALL_SUBJECT_OPTIONS),
+                    index=2,
+                    key="reg_teaching_subject_select",
                 )
-            with ecol2:
-                reg_elective_2 = st.selectbox(
-                    "Choose 2nd Elective",
-                    options=list(ELECTIVE_OPTIONS),
-                    index=1,
-                    key="reg_elective_2_select",
-                )
-            reg_password = st.text_input(
-                "Create Password (min. 6 characters)",
-                type="password",
-                placeholder="At least 6 characters",
-                key="reg_password_input",
-            )
+            elif reg_role == ROLE_STUDENT:
+                st.caption("📚 **Core Subjects Included:** History, Science, Math, English")
+                ecol1, ecol2 = st.columns(2)
+                with ecol1:
+                    reg_elective_1 = st.selectbox(
+                        "8. Choose 1st Elective",
+                        options=list(ELECTIVE_OPTIONS),
+                        index=0,
+                        key="reg_elective_1_select",
+                    )
+                with ecol2:
+                    reg_elective_2 = st.selectbox(
+                        "9. Choose 2nd Elective",
+                        options=list(ELECTIVE_OPTIONS),
+                        index=1,
+                        key="reg_elective_2_select",
+                    )
+
             if st.button("✨ Create Account & Sign In", use_container_width=True):
                 new_user, err_msg = register_user(
                     st.session_state.users,
@@ -1343,11 +1221,11 @@ def _render_login_portal() -> None:
                     password=reg_password,
                     full_name=reg_full_name,
                     role=reg_role,
-                    student_id=reg_student_id,
                     grade_level=reg_grade_level,
                     school_name=reg_school_name,
                     electives=(reg_elective_1, reg_elective_2),
                     email=reg_email,
+                    teaching_subject=reg_teaching_subject,
                 )
                 if err_msg:
                     st.error(err_msg)
@@ -1380,218 +1258,71 @@ def main() -> None:
 
     policy = st.session_state.school_policy
     is_admin = current_user.role == ROLE_ADMIN
-    is_staff = current_user.role in (ROLE_TEACHER, ROLE_ADMIN)
+    is_teacher = current_user.role == ROLE_TEACHER
+    is_staff = is_teacher or is_admin
 
-    # Sidebar: User Session & Grading Settings
+    scale = str(policy["scale"])
+    passing_percentage = int(policy["passing_percentage"])
+    require_all_subjects_pass = bool(policy["require_all_subjects_pass"])
+    use_credit_weights = bool(policy["use_credit_weights"])
+
+    # Clean Role-Specific Sidebar
     with st.sidebar:
         st.markdown(_render_user_profile_html(current_user), unsafe_allow_html=True)
         if st.button("🚪 Sign Out", use_container_width=True):
             _logout_user()
             st.rerun()
 
-        st.divider()
-        st.header("⚙️ Grading Settings")
-        scale = st.selectbox(
-            "Grading Scale",
-            options=[SCALE_PLUS_MINUS, SCALE_STANDARD],
-            index=0 if policy["scale"] == SCALE_PLUS_MINUS else 1,
-            disabled=not is_staff,
-            help="Teachers and Administrators can change the grading scale.",
-        )
-        passing_percentage = st.slider(
-            "Minimum Passing Percentage (%)",
-            min_value=35,
-            max_value=80,
-            value=int(policy["passing_percentage"]),
-            step=1,
-            disabled=not is_admin,
-            help="Locked to school policy (editable by Administrator).",
-        )
-        require_all_subjects_pass = st.checkbox(
-            "Require passing every individual subject",
-            value=bool(policy["require_all_subjects_pass"]),
-            disabled=not is_admin,
-            help="Locked to school policy (editable by Administrator).",
-        )
-        use_credit_weights = st.checkbox(
-            "Weight overall percentage by subject credits",
-            value=bool(policy["use_credit_weights"]),
-            disabled=not is_staff,
-            help="Enable if subjects carry different credit hours.",
-        )
-        policy["scale"] = scale
-        policy["passing_percentage"] = passing_percentage
-        policy["require_all_subjects_pass"] = require_all_subjects_pass
-        policy["use_credit_weights"] = use_credit_weights
+        if is_staff:
+            st.divider()
+            st.subheader("⚙️ Grading Controls")
+            scale = st.selectbox(
+                "Grading Scale",
+                options=[SCALE_PLUS_MINUS, SCALE_STANDARD],
+                index=0 if scale == SCALE_PLUS_MINUS else 1,
+            )
+            policy["scale"] = scale
+            if is_admin:
+                passing_percentage = st.slider(
+                    "Passing Cutoff (%)",
+                    min_value=35,
+                    max_value=80,
+                    value=passing_percentage,
+                    step=1,
+                )
+                require_all_subjects_pass = st.checkbox(
+                    "Require passing every subject",
+                    value=require_all_subjects_pass,
+                )
+                policy["passing_percentage"] = passing_percentage
+                policy["require_all_subjects_pass"] = require_all_subjects_pass
 
         st.divider()
-        st.subheader("📊 Grade Scale Reference")
+        st.subheader("📊 Grade Scale")
         st.markdown(
             _render_sidebar_scale_html(scale, int(passing_percentage)),
             unsafe_allow_html=True,
         )
 
-    # Hero Banner with Live Settings Overview
-    weight_mode_label = "Credit-Weighted" if use_credit_weights else "Total Marks"
-    pass_rule_label = "All Courses Required" if require_all_subjects_pass else "Overall Average Only"
     curve_bonus = float(policy.get("grade_curve_bonus", 0.0))
-    st.markdown(
-        f"<div class='hero-banner'>"
-        f"<div class='hero-top'>"
-        f"<div>"
-        f"<div class='hero-badge'>✨ Signed in as {html.escape(current_user.full_name)} ({html.escape(current_user.role)})</div>"
-        f"<h1 class='main-title'>🎓 Student Grade &amp; Report Card Generator</h1>"
-        f"<p class='sub-title'>Enter student details and course marks below to instantaneously calculate "
-        f"<strong>Percent Grades</strong>, <strong>Letter Grades</strong>, <strong>Cumulative GPA</strong>, "
-        f"and generate a print-ready <strong>Official Pass / Fail Report Card</strong>.</p>"
-        f"</div>"
-        f"</div>"
-        f"<div class='hero-pills'>"
-        f"<div class='hero-pill'>📏 Scale: <span>{html.escape(scale)}</span></div>"
-        f"<div class='hero-pill'>🎯 Passing Cutoff: <span>{passing_percentage}%</span></div>"
-        f"<div class='hero-pill'>⚖️ Calculation: <span>{weight_mode_label}</span></div>"
-        f"<div class='hero-pill'>🛡️ Pass Rule: <span>{pass_rule_label}</span></div>"
-        f"<div class='hero-pill'>📈 Curve Bonus: <span>+{curve_bonus:g}%</span></div>"
-        f"</div>"
-        f"</div>",
-        unsafe_allow_html=True,
-    )
 
-    # Administrator Exclusive Control Center
-    if is_admin:
-        with st.expander("🛡️ Administrator Control Center (School Policy, User Directory & Master Analytics)", expanded=True):
-            adm_col1, adm_col2 = st.columns(2)
-            with adm_col1:
-                st.markdown("**🏛️ Institutional Policy & Grade Curve**")
-                policy["school_name"] = st.text_input(
-                    "Global School / Institution Name",
-                    value=str(policy["school_name"]),
-                    key="admin_school_name",
-                )
-                policy["grade_curve_bonus"] = st.slider(
-                    "School-Wide Grade Curve Bonus (+ Marks)",
-                    min_value=0.0,
-                    max_value=10.0,
-                    value=float(policy.get("grade_curve_bonus", 0.0)),
-                    step=0.5,
-                    help="Adds bonus points (capped at Max Marks) to every student's courses.",
-                )
-            with adm_col2:
-                st.markdown("**👥 Registered Accounts & Role Management**")
-                acct_summary = ", ".join(
-                    f"`{u.username}` ({u.role})" for u in st.session_state.users.values()
-                )
-                st.caption(f"Active Accounts ({len(st.session_state.users)}): {acct_summary}")
-                del_target = st.selectbox(
-                    "Select User Account to Remove",
-                    options=[u for u in st.session_state.users if u != current_user.username],
-                    key="admin_del_user_select",
-                )
-                if st.button("🗑️ Delete Selected Account", use_container_width=True):
-                    ok, msg = delete_user_account(
-                        st.session_state.users, del_target, current_user.username
-                    )
-                    if ok:
-                        st.rerun()
-                    else:
-                        st.error(msg)
-
-            # School-Wide Master Roster CSV Export
-            master_buf = io.StringIO()
-            m_writer = csv.writer(master_buf)
-            m_writer.writerow(["Student ID", "Student Name", "School", "Grade Level", "Overall %", "Letter Grade", "GPA", "Status"])
-            for sid, srec in st.session_state.roster.items():
-                s_school = str(srec.get("school_name", policy["school_name"]))
-                raw_subjs = srec.get("subjects", [])
-                if not raw_subjs:
-                    m_writer.writerow([sid, str(srec["student_name"]), s_school, str(srec["grade_level"]), "N/A", "N/A", "N/A", "No Grades Yet"])
-                    continue
-                s_inputs = [
-                    SubjectInput(
-                        name=str(r["name"]),
-                        marks_obtained=min(float(r["marks"]) + float(policy["grade_curve_bonus"]), float(r["max_marks"])),
-                        max_marks=float(r["max_marks"]),
-                        credits=float(r["credits"]),
-                    )
-                    for r in raw_subjs  # type: ignore[union-attr]
-                ]
-                s_sum = calculate_report_card(
-                    s_inputs,
-                    student_name=str(srec["student_name"]),
-                    student_id=sid,
-                    grade_level=str(srec["grade_level"]),
-                    school_name=s_school,
-                    passing_percentage=float(passing_percentage),
-                    scale=scale,
-                    require_all_subjects_pass=require_all_subjects_pass,
-                    use_credit_weights=use_credit_weights,
-                )
-                m_writer.writerow([sid, s_sum.student_name, s_school, s_sum.grade_level, f"{s_sum.overall_percentage:.2f}%", s_sum.overall_letter_grade, f"{s_sum.gpa:.2f}", s_sum.status])
-            st.download_button(
-                "📥 Download Master School Roster & Grades (.csv)",
-                data=master_buf.getvalue().encode("utf-8"),
-                file_name="master_school_roster_grades.csv",
-                mime="text/csv",
-                use_container_width=True,
-            )
-
-    # Teacher & Admin Classroom Roster Selector (Teachers see students in their own school)
-    active_rec = st.session_state.roster.get(st.session_state.active_student_id, {})
-    custom_advisor_remark = str(active_rec.get("custom_remarks", ""))
+    # Active Student Resolution
     if is_staff:
-        with st.expander("👩‍🏫 Teacher Classroom Roster & Advisor Controls", expanded=True):
-            if is_admin:
-                roster_ids = list(st.session_state.roster.keys())
-                st.caption(f"🛡️ **Administrator View:** Showing all {len(roster_ids)} students across all schools")
-            else:
-                teacher_school = current_user.school_name.strip().lower()
-                roster_ids = [
-                    sid
-                    for sid, srec in st.session_state.roster.items()
-                    if str(srec.get("school_name", DEFAULT_SCHOOL)).strip().lower() == teacher_school
-                ]
-                st.caption(
-                    f"🏫 **School Roster Filter:** Showing {len(roster_ids)} student(s) enrolled at **{current_user.school_name}**"
-                )
-            if not roster_ids:
-                roster_ids = list(st.session_state.roster.keys())
-            r_labels = [
-                f"{sid} — {st.session_state.roster[sid]['student_name']} ({st.session_state.roster[sid]['grade_level']} • {st.session_state.roster[sid].get('school_name', DEFAULT_SCHOOL)})"
-                for sid in roster_ids
+        if is_admin:
+            roster_ids = list(st.session_state.roster.keys())
+        else:
+            teacher_school = current_user.school_name.strip().lower()
+            roster_ids = [
+                sid
+                for sid, srec in st.session_state.roster.items()
+                if str(srec.get("school_name", DEFAULT_SCHOOL)).strip().lower() == teacher_school
             ]
-            curr_idx = (
-                roster_ids.index(st.session_state.active_student_id)
-                if st.session_state.active_student_id in roster_ids
-                else 0
-            )
-            tcol1, tcol2, tcol3 = st.columns([3.0, 1.5, 1.5])
-            with tcol1:
-                chosen_label = st.selectbox(
-                    "Select Student from School Roster",
-                    options=r_labels,
-                    index=curr_idx,
-                    key="teacher_roster_select",
-                )
-                chosen_sid = chosen_label.split(" — ")[0]
-            with tcol2:
-                if st.button("📂 Load Student", use_container_width=True):
-                    _load_student_from_roster(chosen_sid)
-                    st.rerun()
-            with tcol3:
-                if st.button("💾 Save Marks to Roster", use_container_width=True):
-                    if chosen_sid in st.session_state.roster:
-                        st.session_state.roster[chosen_sid]["subjects"] = [
-                            dict(r) for r in st.session_state.subjects
-                        ]
-            custom_advisor_remark = st.text_input(
-                "Custom Teacher / Advisor Remark (optional override on Report Card)",
-                value=custom_advisor_remark,
-                placeholder="e.g., Excellent lab participation this semester!",
-                key="teacher_custom_remark",
-            )
-            if chosen_sid in st.session_state.roster:
-                st.session_state.roster[chosen_sid]["custom_remarks"] = custom_advisor_remark
+        if not roster_ids:
+            roster_ids = list(st.session_state.roster.keys())
+        if st.session_state.active_student_id not in roster_ids:
+            _load_student_from_roster(roster_ids[0])
 
+    active_rec = st.session_state.roster.get(st.session_state.active_student_id, {})
     student_name = (
         current_user.full_name
         if current_user.role == ROLE_STUDENT
@@ -1600,7 +1331,7 @@ def main() -> None:
     student_id = (
         current_user.student_id
         if current_user.role == ROLE_STUDENT
-        else str(active_rec.get("student_id", "STU-2026-104"))
+        else str(active_rec.get("student_id", "20260104"))
     )
     grade_level = (
         current_user.grade_level
@@ -1613,12 +1344,32 @@ def main() -> None:
         if current_user.role == ROLE_STUDENT
         else str(active_rec.get("school_name", policy["school_name"]))
     )
+    custom_advisor_remark = str(active_rec.get("custom_remarks", ""))
 
-    # Top Page Navigation Bar
+    # Compact Top Header
+    st.markdown(
+        f"<div class='hero-banner'>"
+        f"<div class='hero-badge'>✨ {html.escape(current_user.role)} Portal &bull; {html.escape(school_name)}</div>"
+        f"<h1 class='main-title'>🎓 {html.escape(student_name)} — Academic Gradebook</h1>"
+        f"<div class='hero-pills'>"
+        f"<div class='hero-pill'>🪪 Student ID: <span>{html.escape(student_id)}</span></div>"
+        f"<div class='hero-pill'>🎓 Level: <span>{html.escape(grade_level)}</span></div>"
+        f"<div class='hero-pill'>🎯 Passing Cutoff: <span>{passing_percentage}%</span></div>"
+        f"<div class='hero-pill'>📏 Scale: <span>{html.escape(scale)}</span></div>"
+        + (
+            f"<div class='hero-pill'>📘 Teaching Subject: <span>{html.escape(current_user.teaching_subject)}</span></div>"
+            if is_teacher
+            else ""
+        )
+        + f"</div></div>",
+        unsafe_allow_html=True,
+    )
+
+    # Top Page Switcher Buttons
     nav_col1, nav_col2 = st.columns(2)
     with nav_col1:
         if st.button(
-            "📝 Coursework & Subject Marks",
+            "📝 Page 1: Subjects & Assignments",
             type="primary" if st.session_state.active_page == "marks" else "secondary",
             use_container_width=True,
         ):
@@ -1626,7 +1377,7 @@ def main() -> None:
             st.rerun()
     with nav_col2:
         if st.button(
-            "🎓 Official Student Report Card & Analytics",
+            "🎓 Page 2: Official Student Report Card & Analytics",
             type="primary" if st.session_state.active_page == "report" else "secondary",
             use_container_width=True,
         ):
@@ -1636,6 +1387,111 @@ def main() -> None:
 
     st.write("")
 
+    # Staff Bar: Select Student (Teacher sees their school; Admin sees all schools + Admin tools)
+    if is_staff:
+        with _card_container():
+            r_labels = [
+                f"{sid} — {st.session_state.roster[sid]['student_name']} ({st.session_state.roster[sid]['grade_level']} • {st.session_state.roster[sid].get('school_name', DEFAULT_SCHOOL)})"
+                for sid in roster_ids
+            ]
+            curr_idx = (
+                roster_ids.index(st.session_state.active_student_id)
+                if st.session_state.active_student_id in roster_ids
+                else 0
+            )
+            scol1, scol2, scol3 = st.columns([3.2, 1.2, 2.6])
+            with scol1:
+                chosen_label = st.selectbox(
+                    f"👩‍🏫 Select Student ({'All Schools' if is_admin else current_user.school_name})",
+                    options=r_labels,
+                    index=curr_idx,
+                    key="teacher_roster_select",
+                )
+                chosen_sid = chosen_label.split(" — ")[0]
+            with scol2:
+                st.write("")
+                if st.button("📂 Load Student", use_container_width=True):
+                    _load_student_from_roster(chosen_sid)
+                    st.rerun()
+            with scol3:
+                custom_advisor_remark = st.text_input(
+                    "Advisor Remark on Report Card",
+                    value=custom_advisor_remark,
+                    placeholder="Optional note for student...",
+                    key="teacher_custom_remark",
+                )
+                if chosen_sid in st.session_state.roster:
+                    st.session_state.roster[chosen_sid]["custom_remarks"] = custom_advisor_remark
+
+        if is_admin:
+            with st.expander("🛡️ Administrator Tools (School Curve, Account Manager & Master CSV Export)"):
+                adm_col1, adm_col2 = st.columns(2)
+                with adm_col1:
+                    policy["school_name"] = st.text_input(
+                        "Default School Name",
+                        value=str(policy["school_name"]),
+                        key="admin_school_name",
+                    )
+                    policy["grade_curve_bonus"] = st.slider(
+                        "School-Wide Curve Bonus (+% Marks)",
+                        min_value=0.0,
+                        max_value=10.0,
+                        value=float(policy.get("grade_curve_bonus", 0.0)),
+                        step=0.5,
+                    )
+                with adm_col2:
+                    del_target = st.selectbox(
+                        "Remove Registered Account",
+                        options=[u for u in st.session_state.users if u != current_user.username],
+                        key="admin_del_user_select",
+                    )
+                    if st.button("🗑️ Delete Selected Account", use_container_width=True):
+                        ok, msg = delete_user_account(
+                            st.session_state.users, del_target, current_user.username
+                        )
+                        if ok:
+                            st.rerun()
+                        else:
+                            st.error(msg)
+
+                master_buf = io.StringIO()
+                m_writer = csv.writer(master_buf)
+                m_writer.writerow(["Student ID", "Student Name", "School", "Grade Level", "Overall %", "Letter Grade", "GPA", "Status"])
+                for sid, srec in st.session_state.roster.items():
+                    s_school = str(srec.get("school_name", policy["school_name"]))
+                    raw_subjs = srec.get("subjects", [])
+                    if not raw_subjs:
+                        m_writer.writerow([sid, str(srec["student_name"]), s_school, str(srec["grade_level"]), "N/A", "N/A", "N/A", "No Grades Yet"])
+                        continue
+                    s_inputs = [
+                        SubjectInput(
+                            name=str(r["name"]),
+                            marks_obtained=min(float(r["marks"]) + float(policy["grade_curve_bonus"]), float(r["max_marks"])),
+                            max_marks=float(r["max_marks"]),
+                            credits=float(r["credits"]),
+                        )
+                        for r in raw_subjs  # type: ignore[union-attr]
+                    ]
+                    s_sum = calculate_report_card(
+                        s_inputs,
+                        student_name=str(srec["student_name"]),
+                        student_id=sid,
+                        grade_level=str(srec["grade_level"]),
+                        school_name=s_school,
+                        passing_percentage=float(passing_percentage),
+                        scale=scale,
+                        require_all_subjects_pass=require_all_subjects_pass,
+                        use_credit_weights=use_credit_weights,
+                    )
+                    m_writer.writerow([sid, s_sum.student_name, s_school, s_sum.grade_level, f"{s_sum.overall_percentage:.2f}%", s_sum.overall_letter_grade, f"{s_sum.gpa:.2f}", s_sum.status])
+                st.download_button(
+                    "📥 Download Master School Roster & Grades (.csv)",
+                    data=master_buf.getvalue().encode("utf-8"),
+                    file_name="master_school_roster_grades.csv",
+                    mime="text/csv",
+                    use_container_width=True,
+                )
+
     # Identify lowest-percentage subject for "Remove Lowest Grade" preview
     lowest_row = None
     if len(st.session_state.subjects) > 1:
@@ -1643,191 +1499,60 @@ def main() -> None:
             st.session_state.subjects,
             key=lambda r: (float(r["marks"]) / max(float(r["max_marks"]), 1.0)) * 100.0,
         )
+    dropped_id = (
+        int(lowest_row["id"])
+        if st.session_state.drop_lowest_grade and lowest_row is not None
+        else None
+    )
 
-    # Page 1: Coursework & Assignment Marks (Editable ONLY by Teacher; Read-Only Table for Students)
-    can_edit_grades = current_user.role == ROLE_TEACHER
+    target_sid = (
+        current_user.student_id
+        if current_user.role == ROLE_STUDENT
+        else st.session_state.active_student_id
+    )
+    student_rec = st.session_state.roster.get(target_sid, {})
+    saved_electives = student_rec.get("electives", ["Computer Science", "Art & Design"])
+    cur_e1 = (
+        str(saved_electives[0])
+        if isinstance(saved_electives, (list, tuple)) and len(saved_electives) >= 1
+        else "Computer Science"
+    )
+    cur_e2 = (
+        str(saved_electives[1])
+        if isinstance(saved_electives, (list, tuple)) and len(saved_electives) >= 2
+        else "Art & Design"
+    )
+
+    # =========================================================================
+    # PAGE 1: SUBJECTS & ASSIGNMENTS
+    # =========================================================================
     if st.session_state.active_page == "marks":
-        mode_note = (
-            "Read-Only Gradebook (Only your Teacher can add or change assignment grades)"
-            if not can_edit_grades
-            else f"Teacher Gradebook — Editing Student: <strong>{html.escape(student_name)}</strong> ({html.escape(student_id)})"
-        )
-        st.markdown(
-            "<div class='section-head'>"
-            "<div class='section-title-wrap'>"
-            "<span class='step-pill'>Page 1</span>"
-            "<h2 class='section-title'>Coursework &amp; Assignment Marks</h2>"
-            "</div>"
-            f"<span class='section-sub'>{mode_note}</span>"
-            "</div>",
-            unsafe_allow_html=True,
-        )
-
         with _card_container():
-            # Student Electives Selection (Core: History, Science, Math, English + 2 Student-Chosen Electives)
-            target_sid = (
-                current_user.student_id
-                if current_user.role == ROLE_STUDENT
-                else st.session_state.active_student_id
-            )
-            student_rec = st.session_state.roster.get(target_sid, {})
-            saved_electives = student_rec.get("electives", ["Computer Science", "Art & Design"])
-            cur_e1 = (
-                str(saved_electives[0])
-                if isinstance(saved_electives, (list, tuple)) and len(saved_electives) >= 1
-                else "Computer Science"
-            )
-            cur_e2 = (
-                str(saved_electives[1])
-                if isinstance(saved_electives, (list, tuple)) and len(saved_electives) >= 2
-                else "Art & Design"
-            )
             st.markdown(
-                f"<div class='demo-creds-box' style='margin-top:0;margin-bottom:14px;'>"
-                f"📚 <strong>Required Core Subjects (4):</strong> "
-                f"<span class='Demo-code'>History</span> &bull; "
-                f"<span class='Demo-code'>Science</span> &bull; "
-                f"<span class='Demo-code'>Math</span> &bull; "
-                f"<span class='Demo-code'>English</span>"
-                f" &nbsp;|&nbsp; 🎨 <strong>Chosen Electives (2):</strong> "
-                f"<strong>{html.escape(cur_e1)}</strong> &amp; <strong>{html.escape(cur_e2)}</strong>"
-                f"</div>",
+                f"<p class='card-heading'>📚 {html.escape(student_name)}'s 6 Subjects &amp; Assignments</p>"
+                f"<p class='card-subheading'>Core Subjects: <strong>History, Science, Math, English</strong> &bull; "
+                f"Chosen Electives: <strong>{html.escape(cur_e1)}, {html.escape(cur_e2)}</strong></p>",
                 unsafe_allow_html=True,
             )
-            el_col1, el_col2, el_col3 = st.columns([2.2, 2.2, 1.6])
-            e1_idx = list(ELECTIVE_OPTIONS).index(cur_e1) if cur_e1 in ELECTIVE_OPTIONS else 0
-            e2_idx = list(ELECTIVE_OPTIONS).index(cur_e2) if cur_e2 in ELECTIVE_OPTIONS else 1
-            with el_col1:
-                picked_e1 = st.selectbox(
-                    "Choose 1st Elective Subject",
-                    options=list(ELECTIVE_OPTIONS),
-                    index=e1_idx,
-                    key="portal_elective_1",
-                )
-            with el_col2:
-                picked_e2 = st.selectbox(
-                    "Choose 2nd Elective Subject",
-                    options=list(ELECTIVE_OPTIONS),
-                    index=e2_idx,
-                    key="portal_elective_2",
-                )
-            with el_col3:
-                st.write("")
-                if st.button("✅ Save 2 Electives", use_container_width=True):
-                    desired_names = get_student_subject_names(picked_e1, picked_e2)
-                    if target_sid in st.session_state.roster:
-                        st.session_state.roster[target_sid]["electives"] = [picked_e1, picked_e2]
-                    while len(st.session_state.subjects) < 6:
-                        _add_subject_row(
-                            name=desired_names[len(st.session_state.subjects)],
-                            marks=85.0,
-                            max_marks=100.0,
-                            credits=1.0,
-                        )
-                    for idx_s, s_name in enumerate(desired_names):
-                        if idx_s < len(st.session_state.subjects):
-                            st.session_state.subjects[idx_s]["name"] = s_name
-                    if target_sid in st.session_state.roster:
-                        st.session_state.roster[target_sid]["subjects"] = [
-                            dict(r) for r in st.session_state.subjects
-                        ]
-                    st.rerun()
 
-            if not st.session_state.subjects and not can_edit_grades:
-                st.warning(
-                    "📋 No assignments or test results have been entered by your teacher yet. "
-                    "Once a teacher at your school inputs and saves your grades, they will appear here."
-                )
-            elif not can_edit_grades:
-                # Pure Read-Only HTML Table for Students (zero input widgets so grades cannot be changed)
-                ro_rows = []
-                active_for_avg = []
-                for row in st.session_state.subjects:
-                    rid = int(row["id"])
-                    is_dropped_row = (
-                        bool(st.session_state.drop_lowest_grade)
-                        and lowest_row is not None
-                        and int(lowest_row["id"]) == rid
-                    )
-                    sub_assigns = row.get("assignments")
-                    if isinstance(sub_assigns, list) and sub_assigns:
-                        score_val = round(
-                            sum(float(a["score"]) for a in sub_assigns) / len(sub_assigns),
-                            2,
-                        )
-                        row["marks"] = score_val
-                        assign_summary = ", ".join(
-                            f"{html.escape(str(a.get('title', 'Assignment')))}: {float(a['score']):g}/100"
-                            for a in sub_assigns
-                        )
-                    else:
-                        score_val = float(row["marks"])
-                        assign_summary = f"Course Score: {score_val:g}/100"
-                    pct_val = round((score_val / 100.0) * 100.0, 2)
-                    letter, _ = get_letter_grade_and_gpa(
-                        pct_val, passing_percentage=float(passing_percentage), scale=scale
-                    )
-                    g_bg, g_fg, _ = get_grade_tier_colors(letter)
-                    if is_dropped_row:
-                        status_html = "<span class='honor-pill'>Dropped (Excluded)</span>"
-                    else:
-                        active_for_avg.append(pct_val)
-                        passed_row = pct_val >= float(passing_percentage)
-                        p_cls = "pill-pass" if passed_row else "pill-fail"
-                        p_lbl = "✓ PASS" if passed_row else "✕ FAIL"
-                        status_html = f"<span class='{p_cls}'>{p_lbl}</span>"
-                    ro_rows.append(
-                        f"<tr>"
-                        f"<td><strong>{html.escape(str(row['name']))}</strong><br>"
-                        f"<span style='font-size:0.78rem;color:#64748b;'>{assign_summary}</span></td>"
-                        f"<td class='rc-num'><strong>{score_val:g} / 100</strong></td>"
-                        f"<td class='rc-num'>{pct_val:.1f}%</td>"
-                        f"<td class='rc-center'><span class='grade-badge' style='background:{g_bg};color:{g_fg};'>{html.escape(letter)}</span></td>"
-                        f"<td class='rc-center'>{status_html}</td>"
-                        f"</tr>"
-                    )
-                avg_pct = round(sum(active_for_avg) / len(active_for_avg), 2) if active_for_avg else 0.0
-                avg_letter, _ = get_letter_grade_and_gpa(
-                    avg_pct, passing_percentage=float(passing_percentage), scale=scale
-                )
+            # Teacher Single-Subject Assignment Control Box
+            if is_teacher:
+                teacher_subj = current_user.teaching_subject
                 st.markdown(
-                    "<table class='rc-table'>"
-                    "<thead><tr>"
-                    "<th>Subject &amp; Assignments</th>"
-                    "<th class='rc-num'>Averaged Score (/ 100)</th>"
-                    "<th class='rc-num'>Subject %</th>"
-                    "<th class='rc-center'>Letter Grade</th>"
-                    "<th class='rc-center'>Status</th>"
-                    "</tr></thead>"
-                    f"<tbody>{''.join(ro_rows)}</tbody>"
-                    "<tfoot><tr>"
-                    f"<td>Final Averaged Grade ({len(active_for_avg)} Subjects)</td>"
-                    f"<td class='rc-num'>{avg_pct:g} / 100</td>"
-                    f"<td class='rc-num'>{avg_pct:.2f}%</td>"
-                    f"<td class='rc-center'>{html.escape(avg_letter)}</td>"
-                    f"<td class='rc-center'>{'PASS' if avg_pct >= float(passing_percentage) else 'FAIL'}</td>"
-                    "</tr></tfoot>"
-                    "</table>",
+                    f"<div class='info-strip'>"
+                    f"👩‍🏫 <strong>Your Assigned Subject: <span class='code-tag'>{html.escape(teacher_subj)}</span></strong> &mdash; "
+                    f"Add assignments scored out of 100 below. They automatically average into the student's <strong>{html.escape(teacher_subj)}</strong> grade."
+                    f"</div>",
                     unsafe_allow_html=True,
                 )
-            else:
-                # Teacher-Only Assignment Editor: Add assignments (/100) to any of the student's 6 subjects
-                subject_names_list = [str(r["name"]) for r in st.session_state.subjects]
-                st.markdown("**➕ Add Assignment to Student's Subject (Scored Over 100)**")
-                add_c1, add_c2, add_c3, add_c4 = st.columns([2.2, 2.8, 1.8, 1.5])
-                with add_c1:
-                    target_subj_name = st.selectbox(
-                        "Subject",
-                        options=subject_names_list or list(CORE_SUBJECTS),
-                        key="teacher_add_assign_subj",
-                    )
-                with add_c2:
+                ac1, ac2, ac3, ac4 = st.columns([3.2, 1.8, 1.8, 1.4])
+                with ac1:
                     new_assign_title = st.text_input(
-                        "Assignment Title",
+                        f"New {teacher_subj} Assignment Name",
                         value="Unit Test",
                         key="teacher_add_assign_title",
                     )
-                with add_c3:
+                with ac2:
                     new_assign_score = st.number_input(
                         "Score (/ 100 %)",
                         min_value=0.0,
@@ -1836,16 +1561,18 @@ def main() -> None:
                         step=1.0,
                         key="teacher_add_assign_score",
                     )
-                with add_c4:
+                with ac3:
                     st.write("")
-                    if st.button("➕ Add Assignment", use_container_width=True):
+                    if st.button(f"➕ Add to {teacher_subj}", type="primary", use_container_width=True):
+                        matched_subj = False
                         for r in st.session_state.subjects:
-                            if str(r["name"]) == target_subj_name:
+                            if str(r["name"]).strip().lower() == teacher_subj.strip().lower():
+                                matched_subj = True
                                 assigns = list(r.get("assignments") or [])  # type: ignore[arg-type]
                                 assigns.append(
                                     {
                                         "id": len(assigns) + 1,
-                                        "title": f"{target_subj_name} — {new_assign_title.strip() or 'Assignment'}",
+                                        "title": f"{teacher_subj} — {new_assign_title.strip() or 'Assignment'}",
                                         "score": float(new_assign_score),
                                     }
                                 )
@@ -1855,121 +1582,121 @@ def main() -> None:
                                     2,
                                 )
                                 break
-                        if st.session_state.active_student_id in st.session_state.roster:
-                            st.session_state.roster[st.session_state.active_student_id]["subjects"] = [
+                        if not matched_subj:
+                            _add_subject_row(
+                                name=teacher_subj,
+                                marks=float(new_assign_score),
+                                max_marks=100.0,
+                                credits=1.0,
+                            )
+                            st.session_state.subjects[-1]["assignments"] = [
+                                {
+                                    "id": 1,
+                                    "title": f"{teacher_subj} — {new_assign_title.strip() or 'Assignment'}",
+                                    "score": float(new_assign_score),
+                                }
+                            ]
+                        if target_sid in st.session_state.roster:
+                            st.session_state.roster[target_sid]["subjects"] = [
+                                dict(r) for r in st.session_state.subjects
+                            ]
+                        st.rerun()
+                with ac4:
+                    st.write("")
+                    if st.button(f"🧹 Clear {teacher_subj}", use_container_width=True):
+                        for r in st.session_state.subjects:
+                            if str(r["name"]).strip().lower() == teacher_subj.strip().lower():
+                                r["marks"] = 0.0
+                                r["assignments"] = []
+                        if target_sid in st.session_state.roster:
+                            st.session_state.roster[target_sid]["subjects"] = [
                                 dict(r) for r in st.session_state.subjects
                             ]
                         st.rerun()
 
-                st.divider()
-                hdr1, hdr2, hdr3, hdr4 = st.columns([4.2, 2.2, 1.8, 0.8])
-                hdr1.markdown("**Subject (4 Core + 2 Electives)**")
-                hdr2.markdown("**Averaged Score (/ 100 %)**")
-                hdr3.markdown("**Subject Grade**")
-                hdr4.markdown("**Del**")
+            # Clean Legible HTML Table of All 6 Subjects & Their Assignment Averages
+            st.markdown(
+                _render_subjects_table_html(
+                    st.session_state.subjects,
+                    passing_percentage=float(passing_percentage),
+                    scale=scale,
+                    drop_lowest_id=dropped_id,
+                    highlight_subject=current_user.teaching_subject if is_teacher else None,
+                ),
+                unsafe_allow_html=True,
+            )
 
-                for row in list(st.session_state.subjects):
-                    rid = int(row["id"])
-                    row["max_marks"] = 100.0
-                    row["credits"] = 1.0
-                    c1, c2, c3, c4 = st.columns([4.2, 2.2, 1.8, 0.8])
-                    with c1:
-                        row["name"] = st.text_input(
-                            f"Subject Name {rid}",
-                            value=str(row["name"]),
-                            key=f"subj_name_{rid}",
-                            label_visibility="collapsed",
-                        )
-                        sub_assigns = row.get("assignments")
-                        if isinstance(sub_assigns, list) and sub_assigns:
-                            st.caption(
-                                "Assignments: "
-                                + " | ".join(
-                                    f"{a.get('title', 'Task')}: **{float(a['score']):g}/100**"
-                                    for a in sub_assigns
-                                )
+            # Student Electives Picker (tucked neatly into a clean expander)
+            with st.expander("🎨 Choose or Change the 2 Elective Subjects"):
+                el_col1, el_col2, el_col3 = st.columns([2.2, 2.2, 1.6])
+                e1_idx = list(ELECTIVE_OPTIONS).index(cur_e1) if cur_e1 in ELECTIVE_OPTIONS else 0
+                e2_idx = list(ELECTIVE_OPTIONS).index(cur_e2) if cur_e2 in ELECTIVE_OPTIONS else 1
+                with el_col1:
+                    picked_e1 = st.selectbox(
+                        "1st Elective Subject",
+                        options=list(ELECTIVE_OPTIONS),
+                        index=e1_idx,
+                        key="portal_elective_1",
+                    )
+                with el_col2:
+                    picked_e2 = st.selectbox(
+                        "2nd Elective Subject",
+                        options=list(ELECTIVE_OPTIONS),
+                        index=e2_idx,
+                        key="portal_elective_2",
+                    )
+                with el_col3:
+                    st.write("")
+                    if st.button("✅ Save 2 Electives", use_container_width=True):
+                        desired_names = get_student_subject_names(picked_e1, picked_e2)
+                        if target_sid in st.session_state.roster:
+                            st.session_state.roster[target_sid]["electives"] = [picked_e1, picked_e2]
+                        while len(st.session_state.subjects) < 6:
+                            _add_subject_row(
+                                name=desired_names[len(st.session_state.subjects)],
+                                marks=85.0,
+                                max_marks=100.0,
+                                credits=1.0,
                             )
-                    with c2:
-                        row["marks"] = st.number_input(
-                            f"Score over 100 {rid}",
-                            min_value=0.0,
-                            max_value=100.0,
-                            value=min(float(row["marks"]), 100.0),
-                            step=1.0,
-                            key=f"subj_marks_{rid}",
-                            label_visibility="collapsed",
-                        )
-                    with c3:
-                        st.markdown(
-                            _render_live_row_badge(
-                                float(row["marks"]),
-                                100.0,
-                                float(passing_percentage),
-                                scale,
-                            ),
-                            unsafe_allow_html=True,
-                        )
-                    with c4:
+                        for idx_s, s_name in enumerate(desired_names):
+                            if idx_s < len(st.session_state.subjects):
+                                st.session_state.subjects[idx_s]["name"] = s_name
+                        if target_sid in st.session_state.roster:
+                            st.session_state.roster[target_sid]["subjects"] = [
+                                dict(r) for r in st.session_state.subjects
+                            ]
+                        st.rerun()
+
+            # Action Buttons Row (Drop Lowest Grade, Randomize Demo, View Report Card)
+            act_col1, act_col2 = st.columns(2)
+            with act_col1:
+                if lowest_row is not None:
+                    low_pct = (float(lowest_row["marks"]) / max(float(lowest_row["max_marks"]), 1.0)) * 100.0
+                    if not st.session_state.drop_lowest_grade:
                         if st.button(
-                            "✕",
-                            key=f"subj_del_{rid}",
-                            help="Remove this subject",
-                            disabled=len(st.session_state.subjects) <= 1,
+                            f"📉 Remove Lowest Grade ({lowest_row['name']} — {low_pct:.1f}%) to See Result",
+                            use_container_width=True,
                         ):
-                            _remove_subject_row(rid)
-                            if st.session_state.active_student_id in st.session_state.roster:
-                                st.session_state.roster[st.session_state.active_student_id]["subjects"] = [
-                                    dict(r) for r in st.session_state.subjects
-                                ]
+                            st.session_state.drop_lowest_grade = True
+                            st.session_state.show_report = True
+                            st.session_state.active_page = "report"
                             st.rerun()
-
-                # Auto-sync teacher edits to the active student's roster record
-                if st.session_state.active_student_id in st.session_state.roster:
-                    st.session_state.roster[st.session_state.active_student_id]["subjects"] = [
-                        dict(r) for r in st.session_state.subjects
-                    ]
-
-                st.write("")
-                btn_col1, btn_col2, _ = st.columns([2.2, 2.2, 4.6])
-                with btn_col1:
-                    if st.button("🧹 Clear Scores", use_container_width=True):
-                        _clear_all_marks()
-                        st.rerun()
-                with btn_col2:
-                    if st.button("🔄 Reset 6 Subjects", use_container_width=True):
-                        _reset_sample_subjects()
-                        st.rerun()
-                st.write("")
-
-            # Demo-only button to re-roll random assignments & test results
-            if current_user.username in DEMO_STUDENT_USERNAMES:
-                if st.button(
-                    "🎲 Generate New Random Demo Assignments & Test Results",
-                    use_container_width=True,
-                ):
-                    new_demo_rows = generate_random_demo_assignments(6, (cur_e1, cur_e2))
-                    st.session_state.roster[current_user.student_id]["subjects"] = new_demo_rows
-                    st.session_state.subjects = [dict(r) for r in new_demo_rows]
-                    st.session_state.drop_lowest_grade = False
-                    st.rerun()
-
-            # Button to Remove / Restore Lowest Grade to preview impact
-            if lowest_row is not None:
-                low_pct = (float(lowest_row["marks"]) / max(float(lowest_row["max_marks"]), 1.0)) * 100.0
-                if not st.session_state.drop_lowest_grade:
+                    else:
+                        if st.button(
+                            f"🔄 Restore Lowest Grade ({lowest_row['name']} — {low_pct:.1f}%)",
+                            use_container_width=True,
+                        ):
+                            st.session_state.drop_lowest_grade = False
+                            st.rerun()
+            with act_col2:
+                if current_user.username in DEMO_STUDENT_USERNAMES:
                     if st.button(
-                        f"📉 Remove Lowest Grade ({lowest_row['name']} — {low_pct:.1f}%) to See Result",
+                        "🎲 Generate New Random Demo Test Results",
                         use_container_width=True,
                     ):
-                        st.session_state.drop_lowest_grade = True
-                        st.session_state.show_report = True
-                        st.session_state.active_page = "report"
-                        st.rerun()
-                else:
-                    if st.button(
-                        f"🔄 Restore Lowest Grade ({lowest_row['name']} — {low_pct:.1f}%)",
-                        use_container_width=True,
-                    ):
+                        new_demo_rows = generate_random_demo_assignments(6, (cur_e1, cur_e2))
+                        st.session_state.roster[current_user.student_id]["subjects"] = new_demo_rows
+                        st.session_state.subjects = [dict(r) for r in new_demo_rows]
                         st.session_state.drop_lowest_grade = False
                         st.rerun()
 
@@ -1983,14 +1710,16 @@ def main() -> None:
                 st.session_state.active_page = "report"
                 st.rerun()
 
-    # Page 2: Official Student Report Card & Analytics
+    # =========================================================================
+    # PAGE 2: OFFICIAL REPORT CARD & ANALYTICS
+    # =========================================================================
     if st.session_state.active_page == "report":
         active_rows = list(st.session_state.subjects)
         if st.session_state.drop_lowest_grade and lowest_row is not None and len(active_rows) > 1:
             active_rows = [r for r in active_rows if int(r["id"]) != int(lowest_row["id"])]
             low_pct = (float(lowest_row["marks"]) / max(float(lowest_row["max_marks"]), 1.0)) * 100.0
             st.markdown(
-                f"<div class='demo-creds-box' style='margin-bottom:14px;'>"
+                f"<div class='info-strip'>"
                 f"📉 <strong>Lowest Grade Removed Preview:</strong> Excluded "
                 f"<strong>{html.escape(str(lowest_row['name']))}</strong> ({low_pct:.1f}%) "
                 f"to show your recalculated GPA and Report Card result."
@@ -2044,34 +1773,18 @@ def main() -> None:
             use_credit_weights=use_credit_weights,
         )
         if custom_advisor_remark.strip():
-            from dataclasses import replace
-
             summary = replace(
                 summary,
                 remarks=f"{summary.remarks} | Advisor Note: {custom_advisor_remark.strip()}",
             )
 
-        st.markdown(
-            "<div class='section-head'>"
-            "<div class='section-title-wrap'>"
-            "<span class='step-pill'>Page 2</span>"
-            "<h2 class='section-title'>Official Student Report Card &amp; Analytics</h2>"
-            "</div>"
-            "<span class='section-sub'>Ready for download or printing</span>"
-            "</div>",
-            unsafe_allow_html=True,
-        )
-
         today_str = date.today().strftime("%B %d, %Y")
         st.markdown(_render_report_card_html(summary, today_str), unsafe_allow_html=True)
-
-        # Visual Subject Distribution Chart
         st.markdown(
             _render_analytics_chart_html(summary, float(passing_percentage)),
             unsafe_allow_html=True,
         )
 
-        # Export / Download Actions
         st.write("")
         dl_col1, dl_col2 = st.columns(2)
         safe_slug = (

@@ -45,6 +45,7 @@ ELECTIVE_OPTIONS: tuple[str, ...] = (
     "Drama & Theater",
     "Business Studies",
 )
+ALL_SUBJECT_OPTIONS: tuple[str, ...] = (*CORE_SUBJECTS, *ELECTIVE_OPTIONS)
 
 
 def get_student_subject_names(
@@ -136,6 +137,7 @@ class UserAccount:
     school_name: str = DEFAULT_SCHOOL
     electives: tuple[str, str] = ("Computer Science", "Art & Design")
     email: str = ""
+    teaching_subject: str = "Math"
 
 
 def hash_password(password: str, salt: str | None = None) -> tuple[str, str]:
@@ -166,6 +168,7 @@ def _make_user(
     fixed_salt: str,
     school_name: str = DEFAULT_SCHOOL,
     email: str = "",
+    teaching_subject: str = "Math",
 ) -> UserAccount:
     salt, pwd_hash = hash_password(password, salt=fixed_salt)
     return UserAccount(
@@ -178,7 +181,18 @@ def _make_user(
         password_hash=pwd_hash,
         school_name=school_name,
         email=email or f"{username.lower()}@westview.edu",
+        teaching_subject=teaching_subject,
     )
+
+
+def generate_student_id(existing_ids: set[str] | None = None) -> str:
+    """Generate a unique 8-digit numeric Student ID."""
+    taken = existing_ids or set()
+    for _ in range(100):
+        candidate = f"{secrets.randbelow(90_000_000) + 10_000_000}"
+        if candidate not in taken:
+            return candidate
+    return f"{secrets.randbelow(90_000_000) + 10_000_000}"
 
 
 def get_default_users() -> dict[str, UserAccount]:
@@ -189,7 +203,7 @@ def get_default_users() -> dict[str, UserAccount]:
             password="student123",
             full_name="Alex Johnson",
             role=ROLE_STUDENT,
-            student_id="STU-2026-104",
+            student_id="20260104",
             grade_level="Grade 11",
             fixed_salt="a1b2c3d4e5f60718293a4b5c6d7e8f90",
         ),
@@ -198,7 +212,7 @@ def get_default_users() -> dict[str, UserAccount]:
             password="student123",
             full_name="Sam Rivera",
             role=ROLE_STUDENT,
-            student_id="STU-2026-209",
+            student_id="20260209",
             grade_level="Grade 12",
             fixed_salt="f0e9d8c7b6a594837261504f3e2d1c0b",
         ),
@@ -207,7 +221,7 @@ def get_default_users() -> dict[str, UserAccount]:
             password="student123",
             full_name="Priya Patel",
             role=ROLE_STUDENT,
-            student_id="STU-2026-315",
+            student_id="20260315",
             grade_level="Grade 11",
             fixed_salt="99887766554433221100ffeeddccbbaa",
         ),
@@ -216,7 +230,7 @@ def get_default_users() -> dict[str, UserAccount]:
             password="teacher123",
             full_name="Prof. Sarah Jenkins",
             role=ROLE_TEACHER,
-            student_id="TCH-2026-01",
+            student_id="10020261",
             grade_level="Senior Faculty",
             fixed_salt="11223344556677889900aabbccddeeff",
         ),
@@ -225,7 +239,7 @@ def get_default_users() -> dict[str, UserAccount]:
             password="admin123",
             full_name="Dr. Marcus Sterling",
             role=ROLE_ADMIN,
-            student_id="ADM-2026-01",
+            student_id="10020260",
             grade_level="Principal & Registrar",
             fixed_salt="abcdef0123456789abcdef0123456789",
         ),
@@ -236,9 +250,9 @@ def get_default_users() -> dict[str, UserAccount]:
 def get_default_student_roster() -> dict[str, dict[str, object]]:
     """Return initial multi-student academic records for Demo views."""
     return {
-        "STU-2026-104": {
+        "20260104": {
             "student_name": "Alex Johnson",
-            "student_id": "STU-2026-104",
+            "student_id": "20260104",
             "grade_level": "Grade 11",
             "school_name": DEFAULT_SCHOOL,
             "username": "alex",
@@ -247,9 +261,9 @@ def get_default_student_roster() -> dict[str, dict[str, object]]:
             "custom_remarks": "",
             "subjects": generate_random_demo_assignments(6, ("Computer Science", "Art & Design")),
         },
-        "STU-2026-209": {
+        "20260209": {
             "student_name": "Sam Rivera",
-            "student_id": "STU-2026-209",
+            "student_id": "20260209",
             "grade_level": "Grade 12",
             "school_name": DEFAULT_SCHOOL,
             "username": "sam",
@@ -258,9 +272,9 @@ def get_default_student_roster() -> dict[str, dict[str, object]]:
             "custom_remarks": "",
             "subjects": generate_random_demo_assignments(6, ("Economics", "Spanish")),
         },
-        "STU-2026-315": {
+        "20260315": {
             "student_name": "Priya Patel",
-            "student_id": "STU-2026-315",
+            "student_id": "20260315",
             "grade_level": "Grade 11",
             "school_name": DEFAULT_SCHOOL,
             "username": "priya",
@@ -296,11 +310,12 @@ def register_user(
     password: str,
     full_name: str,
     role: str = ROLE_STUDENT,
-    student_id: str = "STU-2026-500",
+    student_id: str = "",
     grade_level: str = "Grade 11",
     school_name: str = DEFAULT_SCHOOL,
     electives: tuple[str, str] = ("Computer Science", "Art & Design"),
     email: str = "",
+    teaching_subject: str = "Math",
 ) -> tuple[UserAccount | None, str | None]:
     """Register a new Student, Teacher, or Administrator account.
 
@@ -308,10 +323,12 @@ def register_user(
     """
     clean_user = username.strip().lower()
     clean_name = full_name.strip()
-    clean_id = student_id.strip() or "STU-2026-500"
+    existing_ids = {u.student_id for u in users.values()}
+    clean_id = student_id.strip() or generate_student_id(existing_ids)
     clean_grade = grade_level.strip() or "Grade 11"
     clean_school = school_name.strip() or DEFAULT_SCHOOL
     clean_email = email.strip().lower()
+    clean_subj = teaching_subject.strip() or "Math"
 
     if len(clean_user) < 3:
         return (None, "Username must be at least 3 characters long.")
@@ -339,6 +356,7 @@ def register_user(
         school_name=clean_school,
         electives=electives,
         email=clean_email or f"{clean_user}@westview.edu",
+        teaching_subject=clean_subj,
     )
     users[clean_user] = new_account
     return (new_account, None)
