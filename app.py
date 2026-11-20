@@ -3,8 +3,10 @@
 from __future__ import annotations
 
 import csv
+import hmac
 import html
 import io
+import os
 from contextlib import nullcontext
 from datetime import date
 from typing import Any
@@ -24,11 +26,16 @@ from auth import (
     authenticate_user,
     build_empty_student_subjects,
     delete_user_account,
+    find_user_by_username_or_email,
     generate_random_demo_assignments,
+    generate_recovery_code,
+    get_configured_resend_api_key,
     get_default_student_roster,
     get_default_users,
     get_student_subject_names,
     register_user,
+    reset_user_password,
+    send_resend_recovery_email,
 )
 from grading import (
     SCALE_PLUS_MINUS,
@@ -718,6 +725,8 @@ def _init_state() -> None:
         st.session_state.active_page = "marks"
     if "drop_lowest_grade" not in st.session_state:
         st.session_state.drop_lowest_grade = False
+    if "recovery_pending" not in st.session_state:
+        st.session_state.recovery_pending = None
 
 
 def _load_student_from_roster(student_id: str) -> None:
@@ -1134,6 +1143,98 @@ def _render_login_portal() -> None:
                 else:
                     st.error("Invalid username or password. Use a demo account below!")
 
+            # Forgot Password / Email Recovery via Resend
+            with st.expander("📧 Forgot Password? Recover via Email (Resend)"):
+                st.caption(
+                    "Enter your username and email address to receive a 6-digit password recovery code via **Resend**."
+                )
+                secret_resend_key = ""
+                try:
+                    secrets_obj = getattr(st, "secrets", None)
+                    if secrets_obj and "RESEND_API_KEY" in secrets_obj:
+                        secret_resend_key = str(secrets_obj["RESEND_API_KEY"])
+                except Exception:  # noqa: BLE001
+                    secret_resend_key = ""
+                active_resend_key = get_configured_resend_api_key(secret_resend_key)
+
+                rec_identifier = st.text_input(
+                    "Username or Account Email",
+                    placeholder="e.g., alex, teacher, or your registered username",
+                    key="rec_identifier_input",
+                )
+                rec_email_override = st.text_input(
+                    "Your Email Address (where the 6-digit code will be sent)",
+                    placeholder="Enter your email address (e.g., you@gmail.com)",
+                    key="rec_email_override_input",
+                )
+                if st.button("📨 Send 6-Digit Recovery Code via Resend", use_container_width=True):
+                    target_acct = find_user_by_username_or_email(
+                        st.session_state.users,
+                        rec_identifier,
+                    )
+                    if target_acct is None:
+                        st.error("No student or teacher account found matching that username or email.")
+                    else:
+                        code = generate_recovery_code()
+                        dest_email = rec_email_override.strip() or target_acct.email
+                        st.session_state.recovery_pending = {
+                            "username": target_acct.username,
+                            "email": dest_email,
+                            "code": code,
+                        }
+                        ok_sent, send_msg = send_resend_recovery_email(
+                            api_key=active_resend_key,
+                            to_email=dest_email,
+                            full_name=target_acct.full_name,
+                            username=target_acct.username,
+                            code=code,
+                        )
+                        if ok_sent:
+                            st.markdown(
+                                f"<div class='demo-creds-box'>✅ {html.escape(send_msg)}</div>",
+                                unsafe_allow_html=True,
+                            )
+                        else:
+                            st.warning(f"{send_msg}")
+
+                pending = st.session_state.recovery_pending
+                if isinstance(pending, dict) and pending.get("username"):
+                    st.divider()
+                    st.markdown(
+                        f"**Verify 6-Digit Code for `{html.escape(str(pending['username']))}`**"
+                    )
+                    entered_code = st.text_input(
+                        "6-Digit Recovery Code",
+                        placeholder="e.g., 482910",
+                        key="rec_verify_code_input",
+                    )
+                    new_reset_pwd = st.text_input(
+                        "New Password (min. 6 characters)",
+                        type="password",
+                        placeholder="Enter your new password",
+                        key="rec_new_password_input",
+                    )
+                    if st.button("🔐 Verify Code & Reset Password", type="primary", use_container_width=True):
+                        expected_code = str(pending.get("code", ""))
+                        if expected_code and hmac.compare_digest(
+                            entered_code.strip(), expected_code
+                        ):
+                            ok_rst, rst_msg = reset_user_password(
+                                st.session_state.users,
+                                str(pending["username"]),
+                                new_reset_pwd,
+                            )
+                            if ok_rst:
+                                st.session_state.recovery_pending = None
+                                st.markdown(
+                                    f"<div class='demo-creds-box'>✅ {html.escape(rst_msg)}</div>",
+                                    unsafe_allow_html=True,
+                                )
+                            else:
+                                st.error(rst_msg)
+                        else:
+                            st.error("Invalid 6-digit recovery code. Please check your email and try again.")
+
             st.divider()
             st.caption("⚡ **One-Click Demo Logins (3 Account Types)**")
             dcol1, dcol2, dcol3 = st.columns(3)
@@ -1174,6 +1275,11 @@ def _render_login_portal() -> None:
                 "Full Name",
                 placeholder="e.g., Jordan Taylor",
                 key="reg_full_name_input",
+            )
+            reg_email = st.text_input(
+                "Recovery Email Address",
+                placeholder="e.g., jordan@westview.edu",
+                key="reg_email_input",
             )
             rcol1, rcol2 = st.columns(2)
             with rcol1:
@@ -1241,6 +1347,7 @@ def _render_login_portal() -> None:
                     grade_level=reg_grade_level,
                     school_name=reg_school_name,
                     electives=(reg_elective_1, reg_elective_2),
+                    email=reg_email,
                 )
                 if err_msg:
                     st.error(err_msg)

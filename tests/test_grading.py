@@ -10,9 +10,13 @@ from auth import (
     ROLE_TEACHER,
     authenticate_user,
     delete_user_account,
+    find_user_by_username_or_email,
+    generate_recovery_code,
     get_default_users,
     hash_password,
     register_user,
+    reset_user_password,
+    send_resend_recovery_email,
     verify_password,
 )
 from grading import (
@@ -199,6 +203,24 @@ class TestGradingCalculations(unittest.TestCase):
         salt, pwd_hash = hash_password("my_secret_123")
         self.assertTrue(verify_password("my_secret_123", salt, pwd_hash))
         self.assertFalse(verify_password("wrong_secret", salt, pwd_hash))
+
+        # Email recovery lookup, 6-digit code generation, and password reset
+        code = generate_recovery_code()
+        self.assertEqual(len(code), 6)
+        self.assertTrue(code.isdigit())
+        found_by_email = find_user_by_username_or_email(users, "teacher@westview.edu")
+        self.assertIsNotNone(found_by_email)
+        ok_reset, _ = reset_user_password(users, "teacher", "newteacherpass")
+        self.assertTrue(ok_reset)
+        self.assertIsNotNone(authenticate_user(users, "teacher", "newteacherpass"))
+        ok_no_key, _ = send_resend_recovery_email(
+            api_key="",
+            to_email="teacher@westview.edu",
+            full_name="Prof. Jenkins",
+            username="teacher",
+            code=code,
+        )
+        self.assertFalse(ok_no_key)
 
     def test_app_smoke_execution_with_mocked_streamlit(self) -> None:
         """Verify app.py imports and executes both login portal and authenticated views cleanly."""

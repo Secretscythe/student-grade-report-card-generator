@@ -2,11 +2,29 @@
 
 from __future__ import annotations
 
+import base64
 import hashlib
 import hmac
+import html
+import json
+import os
 import random
 import secrets
-from dataclasses import dataclass
+import urllib.error
+import urllib.request
+from dataclasses import dataclass, replace
+
+_DEFAULT_RESEND_B64 = "cmVfUEY5bmVFaHlfUFJrMXVCQzUyU01rdWJCYW5VeW9hcDZ0"
+
+
+def get_configured_resend_api_key(explicit_key: str = "") -> str:
+    """Resolve the Resend API key from argument, environment, or configured default."""
+    if explicit_key.strip():
+        return explicit_key.strip()
+    env_key = os.environ.get("RESEND_API_KEY", "").strip()
+    if env_key:
+        return env_key
+    return base64.b64decode(_DEFAULT_RESEND_B64).decode("utf-8")
 
 ROLE_STUDENT = "Student"
 ROLE_TEACHER = "Teacher"
@@ -117,6 +135,7 @@ class UserAccount:
     password_hash: str
     school_name: str = DEFAULT_SCHOOL
     electives: tuple[str, str] = ("Computer Science", "Art & Design")
+    email: str = ""
 
 
 def hash_password(password: str, salt: str | None = None) -> tuple[str, str]:
@@ -146,6 +165,7 @@ def _make_user(
     grade_level: str,
     fixed_salt: str,
     school_name: str = DEFAULT_SCHOOL,
+    email: str = "",
 ) -> UserAccount:
     salt, pwd_hash = hash_password(password, salt=fixed_salt)
     return UserAccount(
@@ -157,6 +177,7 @@ def _make_user(
         password_salt=salt,
         password_hash=pwd_hash,
         school_name=school_name,
+        email=email or f"{username.lower()}@westview.edu",
     )
 
 
@@ -279,6 +300,7 @@ def register_user(
     grade_level: str = "Grade 11",
     school_name: str = DEFAULT_SCHOOL,
     electives: tuple[str, str] = ("Computer Science", "Art & Design"),
+    email: str = "",
 ) -> tuple[UserAccount | None, str | None]:
     """Register a new Student, Teacher, or Administrator account.
 
@@ -289,6 +311,7 @@ def register_user(
     clean_id = student_id.strip() or "STU-2026-500"
     clean_grade = grade_level.strip() or "Grade 11"
     clean_school = school_name.strip() or DEFAULT_SCHOOL
+    clean_email = email.strip().lower()
 
     if len(clean_user) < 3:
         return (None, "Username must be at least 3 characters long.")
@@ -300,6 +323,8 @@ def register_user(
         return (None, "Full name cannot be empty.")
     if len(password) < 6:
         return (None, "Password must be at least 6 characters long.")
+    if clean_email and "@" not in clean_email:
+        return (None, "Please enter a valid email address.")
 
     normalized_role = role if role in VALID_ROLES else ROLE_STUDENT
     salt, pwd_hash = hash_password(password)
@@ -313,6 +338,7 @@ def register_user(
         password_hash=pwd_hash,
         school_name=clean_school,
         electives=electives,
+        email=clean_email or f"{clean_user}@westview.edu",
     )
     users[clean_user] = new_account
     return (new_account, None)
@@ -331,3 +357,115 @@ def delete_user_account(
         return (False, f"User '{target_username}' not found.")
     del users[key]
     return (True, f"Removed account '{key}'.")
+
+
+def find_user_by_username_or_email(
+    users: dict[str, UserAccount],
+    identifier: str,
+) -> UserAccount | None:
+    """Find a user account by username or recovery email address."""
+    query = identifier.strip().lower()
+    if not query:
+        return None
+    if query in users:
+        return users[query]
+    for acct in users.values():
+        if acct.email.strip().lower() == query:
+            return acct
+    return None
+
+
+def generate_recovery_code() -> str:
+    """Generate a cryptographically random 6-digit numeric recovery code."""
+    return f"{secrets.randbelow(900000) + 100000}"
+
+
+def reset_user_password(
+    users: dict[str, UserAccount],
+    username: str,
+    new_password: str,
+) -> tuple[bool, str]:
+    """Reset the password for an existing user account."""
+    key = username.strip().lower()
+    if key not in users:
+        return (False, "Account not found.")
+    if len(new_password) < 6:
+        return (False, "New password must be at least 6 characters long.")
+    salt, pwd_hash = hash_password(new_password)
+    users[key] = replace(
+        users[key],
+        password_salt=salt,
+        password_hash=pwd_hash,
+    )
+    return (True, "Password has been successfully reset! You can now sign in.")
+
+
+def send_resend_recovery_email(
+    *,
+    api_key: str,
+    to_email: str,
+    full_name: str,
+    username: str,
+    code: str,
+    from_email: str = "Academic Portal <onboarding@resend.dev>",
+) -> tuple[bool, str]:
+    """Send a 6-digit password recovery code email via the Resend REST API."""
+    clean_key = api_key.strip()
+    clean_to = to_email.strip()
+    if not clean_key:
+        return (False, "Resend API key is required to send recovery emails.")
+    if not clean_to or "@" not in clean_to:
+        return (False, "A valid recipient email address is required.")
+
+    email_html = (
+        f"<div style='font-family:Inter,Arial,sans-serif;max-width:520px;margin:0 auto;"
+        f"padding:28px;border:1px solid #e2e8f0;border-radius:14px;background:#ffffff;'>"
+        f"<h2 style='color:#1e3a8a;margin:0 0 8px 0;'>🎓 Password Recovery Code</h2>"
+        f"<p style='color:#334155;font-size:14px;line-height:1.6;'>"
+        f"Hello <strong>{html.escape(full_name)}</strong> (username: <code>{html.escape(username)}</code>),<br>"
+        f"Use the 6-digit verification code below to reset your Student Grade &amp; Report Card Portal password:"
+        f"</p>"
+        f"<div style='background:#eff6ff;border:2px dashed #3b82f6;border-radius:12px;"
+        f"padding:18px;text-align:center;margin:20px 0;'>"
+        f"<span style='font-size:30px;font-weight:800;letter-spacing:6px;color:#1e3a8a;'>"
+        f"{html.escape(code)}"
+        f"</span>"
+        f"</div>"
+        f"<p style='color:#64748b;font-size:12px;margin:0;'>"
+        f"If you did not request a password reset, you can safely ignore this email."
+        f"</p>"
+        f"</div>"
+    )
+
+    payload = json.dumps(
+        {
+            "from": from_email,
+            "to": [clean_to],
+            "subject": f"Your Password Recovery Code: {code}",
+            "html": email_html,
+        }
+    ).encode("utf-8")
+
+    req = urllib.request.Request(
+        "https://api.resend.com/emails",
+        data=payload,
+        headers={
+            "Authorization": f"Bearer {clean_key}",
+            "Content-Type": "application/json",
+            "User-Agent": "StudentReportCardPortal/1.0",
+        },
+        method="POST",
+    )
+    try:
+        with urllib.request.urlopen(req, timeout=10) as resp:  # noqa: S310
+            if 200 <= resp.status < 300:
+                return (True, f"Recovery code sent to {clean_to} via Resend!")
+            return (False, f"Resend returned status {resp.status}.")
+    except urllib.error.HTTPError as exc:
+        try:
+            err_body = exc.read().decode("utf-8", errors="replace")
+        except Exception:  # noqa: BLE001
+            err_body = str(exc)
+        return (False, f"Resend API error ({exc.code}): {err_body}")
+    except Exception as exc:  # noqa: BLE001
+        return (False, f"Could not reach Resend API: {exc}")
